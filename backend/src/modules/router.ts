@@ -1,0 +1,38 @@
+import { Router } from 'express';
+import { authRouter } from './auth/auth.routes';
+import { usersRouter } from './users/users.routes';
+import { rolesRouter } from './roles/roles.routes';
+import { companiesRouter } from './companies/companies.routes';
+import { contactsRouter } from './contacts/contacts.routes';
+import { leadsRouter } from './leads/leads.routes';
+import { campaignsRouter } from './campaigns/campaigns.routes';
+import { meetingsRouter } from './meetings/meetings.routes';
+import { tasksRouter } from './tasks/tasks.routes';
+import { documentsRouter } from './documents/documents.routes';
+import { commentsRouter } from './comments/comments.routes';
+import { notificationsRouter } from './notifications/notifications.routes';
+import { activitiesRouter } from './activities/activities.routes';
+import { auditLogsRouter } from './auditLogs/auditLogs.routes';
+import { dashboardRouter } from './dashboard/dashboard.routes';
+import { searchRouter } from './search/search.routes';
+import { reportsRouter } from './reports/reports.routes';
+
+export const apiRouter = Router();
+
+apiRouter.use('/auth', authRouter);
+apiRouter.use('/users', usersRouter);
+apiRouter.use('/roles', rolesRouter);
+apiRouter.use('/companies', companiesRouter);
+apiRouter.use('/contacts', contactsRouter);
+apiRouter.use('/leads', leadsRouter);
+apiRouter.use('/campaigns', campaignsRouter);
+apiRouter.use('/meetings', meetingsRouter);
+apiRouter.use('/tasks', tasksRouter);
+apiRouter.use('/documents', documentsRouter);
+apiRouter.use('/comments', commentsRouter);
+apiRouter.use('/notifications', notificationsRouter);
+apiRouter.use('/activities', activitiesRouter);
+apiRouter.use('/audit-logs', auditLogsRouter);
+apiRouter.use('/dashboard', dashboardRouter);
+apiRouter.use('/search', searchRouter);
+apiRouter.use('/reports', reportsRouter);

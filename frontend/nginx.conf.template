@@ -1,0 +1,43 @@
+server {
+    listen ${PORT};
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript image/svg+xml;
+    gzip_min_length 1024;
+
+    # Proxy API calls to the backend service. BACKEND_ORIGIN is substituted at
+    # container start (via envsubst — see the nginx:alpine entrypoint's
+    # templates mechanism) so the same image works against Docker Compose's
+    # service-name DNS ("backend") or Railway's private-network hostname
+    # ("<service>.railway.internal") without a rebuild.
+    location /api/ {
+        proxy_pass ${BACKEND_ORIGIN}/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cookie_path / /;
+    }
+
+    location /uploads/ {
+        proxy_pass ${BACKEND_ORIGIN}/uploads/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+    }
+
+    # Cache hashed static assets aggressively.
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # SPA fallback — client-side routing.
+    location / {
+        try_files $uri $uri/ /index.html;
+        add_header Cache-Control "no-cache";
+    }
+}

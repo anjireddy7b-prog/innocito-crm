@@ -1,0 +1,102 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 20% 98%;
+    --foreground: 222 24% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 24% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 24% 12%;
+
+    --primary: 222 89% 45%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 20% 95%;
+    --secondary-foreground: 222 24% 18%;
+
+    --muted: 220 16% 94%;
+    --muted-foreground: 222 12% 42%;
+
+    --accent: 222 89% 96%;
+    --accent-foreground: 222 89% 30%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 152 60% 36%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 30 40% 12%;
+
+    --border: 220 16% 88%;
+    --input: 220 16% 88%;
+    --ring: 222 89% 45%;
+
+    --radius: 0.625rem;
+  }
+
+  .dark {
+    --background: 222 28% 8%;
+    --foreground: 220 20% 92%;
+
+    --card: 222 26% 11%;
+    --card-foreground: 220 20% 92%;
+
+    --popover: 222 26% 11%;
+    --popover-foreground: 220 20% 92%;
+
+    --primary: 217 91% 62%;
+    --primary-foreground: 222 28% 8%;
+
+    --secondary: 222 20% 16%;
+    --secondary-foreground: 220 20% 92%;
+
+    --muted: 222 20% 16%;
+    --muted-foreground: 220 12% 65%;
+
+    --accent: 217 60% 18%;
+    --accent-foreground: 217 91% 80%;
+
+    --destructive: 0 63% 48%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 152 55% 42%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 85% 55%;
+    --warning-foreground: 30 40% 12%;
+
+    --border: 222 20% 20%;
+    --input: 222 20% 20%;
+    --ring: 217 91% 62%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-border rounded-full;
+  }
+}
