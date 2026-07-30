@@ -76,7 +76,7 @@ Same shape as Companies, gated by `contacts:manage`. `GET /:id` includes
 | PATCH | `/:id` | `leads:edit_own` **or** `leads:edit_any` | Ownership check happens in the service: `edit_own` only succeeds if the caller is the lead's `assignedTo`, `currentOwner`, or `createdBy`. |
 | PATCH | `/:id/assign` | `leads:assign` | `{ assignedToId?, currentOwnerId?, note? }`. |
 | POST | `/bulk-assign` | `leads:assign` | `{ leadIds: string[], assignedToId?, currentOwnerId? }`. |
-| PATCH | `/:id/status` | `leads:edit_own` or `leads:edit_any` | `{ status, lossReason?, note? }` — validated against a finite-state machine (`utils` `VALID_TRANSITIONS`); an illegal transition (e.g. `WON` → `NEW`) is rejected with 400. |
+| PATCH | `/:id/status` | `leads:edit_own` or `leads:edit_any` | `{ status, lossReason?, note? }` — a lead can be moved to any valid status at any time (no enforced pipeline order); the value is still validated against the fixed set of real lead statuses and rejected with 400 if it isn't one. |
 | DELETE | `/:id` | `ADMIN` role | Soft delete (`isActive = false`) — preserves the record for audit/reporting. |
 
 Every mutation on a lead writes an `activities` row (visible in the Timeline

@@ -108,9 +108,17 @@ its own `Dockerfile` directly).
 
 | | |
 |---|---|
-| App URL | _filled in after deployment — see the delivery message for this session_ |
-| API health check | `<app-url-or-backend-url>/health` |
-| Seeded Admin login | the `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` configured for that deployment |
+| App URL | https://frontend-production-4df04.up.railway.app |
+| Backend URL (private-networked; public domain also generated) | https://backend-production-59c1.up.railway.app |
+| API health check | https://backend-production-59c1.up.railway.app/health |
+| Seeded Admin login | `admin@innocito.com` / see the credential delivered separately for this deployment — change it on first login |
+
+Verified end-to-end after the most recent deploy: `GET /health` returns
+`{"status":"ok"}`; the frontend serves the built SPA at `/`; and
+`GET /api/auth/me` through the frontend's nginx proxy returns `401` (the
+correct "unauthenticated" response), confirming the frontend → backend
+private-networking path (`BACKEND_ORIGIN=http://backend.railway.internal:4000`)
+is wired correctly end-to-end.
 
 ## Environment variable reference
 

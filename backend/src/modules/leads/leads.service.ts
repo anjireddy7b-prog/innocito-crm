@@ -350,31 +350,20 @@ export async function bulkAssignLeads(req: Request, input: { leadIds: string[]; 
   return { updated: input.leadIds.length };
 }
 
-const VALID_TRANSITIONS: Record<string, string[]> = {
-  NEW: ['CONTACTED', 'DISQUALIFIED'],
-  CONTACTED: ['QUALIFIED', 'MEETING_SCHEDULED', 'DISQUALIFIED', 'ON_HOLD'],
-  QUALIFIED: ['MEETING_SCHEDULED', 'DISQUALIFIED', 'ON_HOLD'],
-  MEETING_SCHEDULED: ['MEETING_DONE', 'ON_HOLD', 'DISQUALIFIED'],
-  MEETING_DONE: ['DEMO_SCHEDULED', 'PROPOSAL_SENT', 'ON_HOLD', 'LOST'],
-  DEMO_SCHEDULED: ['DEMO_DONE', 'ON_HOLD', 'LOST'],
-  DEMO_DONE: ['PROPOSAL_SENT', 'ON_HOLD', 'LOST'],
-  PROPOSAL_SENT: ['NEGOTIATION', 'WON', 'LOST', 'ON_HOLD'],
-  NEGOTIATION: ['WON', 'LOST', 'ON_HOLD'],
-  ON_HOLD: ['CONTACTED', 'QUALIFIED', 'MEETING_SCHEDULED', 'DEMO_SCHEDULED', 'PROPOSAL_SENT', 'NEGOTIATION', 'LOST'],
-  WON: [],
-  LOST: [],
-  DISQUALIFIED: [],
-};
-
+// Previously the lead pipeline enforced a strict stage order (e.g. you could
+// not jump from DEMO_DONE straight to WON without passing through
+// PROPOSAL_SENT / NEGOTIATION first). Per product decision, reps need to be
+// able to set a lead to any status at any time — a deal can close faster
+// than the paperwork stages suggest, or a rep may need to correct a
+// mis-set status — so that restriction has been removed. The status value
+// itself is still validated against the fixed enum of real statuses by the
+// route's zod schema (`changeStatusSchema`), so this only lifts the
+// "which stage can follow which stage" ordering rule, not the set of valid
+// statuses.
 export async function changeLeadStatus(req: Request, id: string, input: { status: string; lossReason?: string | null; note?: string }) {
   const before = await db.query.leads.findFirst({ where: eq(leads.id, id) });
   if (!before) throw ApiError.notFound('Lead not found');
   if (!canEditLead(req, before)) throw ApiError.forbidden('You do not have permission to edit this lead');
-
-  const allowed = VALID_TRANSITIONS[before.status] ?? [];
-  if (before.status !== input.status && !allowed.includes(input.status)) {
-    throw ApiError.badRequest(`Cannot move a lead from ${before.status} to ${input.status}`, { allowed });
-  }
 
   const isTerminal = ['WON', 'LOST', 'DISQUALIFIED'].includes(input.status);
   await db

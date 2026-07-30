@@ -61,16 +61,24 @@ describe('Leads lifecycle', () => {
     expect(res.body.data.activities[0].type).toBe('LEAD_CREATED');
   });
 
-  it('rejects an invalid status transition (NEW -> WON is not a legal jump)', async () => {
+  it('rejects a status value that is not a real status (still enum-validated)', async () => {
+    const res = await request(app)
+      .patch(`/api/leads/${leadId}/status`)
+      .set('Authorization', `Bearer ${insideSalesToken}`)
+      .send({ status: 'NOT_A_REAL_STATUS' });
+    expect(res.status).toBe(400);
+  });
+
+  it('allows jumping directly between any two valid statuses — no enforced pipeline order (NEW -> WON)', async () => {
     const res = await request(app)
       .patch(`/api/leads/${leadId}/status`)
       .set('Authorization', `Bearer ${insideSalesToken}`)
       .send({ status: 'WON' });
-    expect(res.status).toBe(400);
-    expect(res.body.details?.allowed ?? res.body.message).toBeTruthy();
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe('WON');
   });
 
-  it('accepts a valid status transition (NEW -> CONTACTED)', async () => {
+  it('also allows moving a lead back out of a terminal status (WON -> CONTACTED)', async () => {
     const res = await request(app)
       .patch(`/api/leads/${leadId}/status`)
       .set('Authorization', `Bearer ${insideSalesToken}`)
