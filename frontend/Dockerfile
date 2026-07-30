@@ -28,6 +28,13 @@ COPY --from=build /app/dist /usr/share/nginx/html
 ENV PORT=80
 ENV BACKEND_ORIGIN=http://backend:4000
 
+# Opts in to the nginx:alpine image's own entrypoint/15-local-resolvers.envsh
+# script, which reads the container's real nameserver(s) from /etc/resolv.conf
+# into $NGINX_LOCAL_RESOLVERS (used by the `resolver` directive in
+# nginx.conf.template) — without this flag that script is a no-op and
+# $NGINX_LOCAL_RESOLVERS is never set.
+ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
+
 EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget -q -O /dev/null "http://127.0.0.1:${PORT}/" || exit 1

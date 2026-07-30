@@ -14,12 +14,16 @@ server {
     # container restarts/redeploys and gets a new internal address (Docker
     # Compose service restart, Railway redeploy, etc.), nginx keeps sending
     # traffic to the old, now-dead IP and every request hangs until nginx
-    # itself is restarted. `resolver local=on` reads nameservers from the
-    # container's own /etc/resolv.conf (Docker's embedded DNS at 127.0.0.11
-    # for Compose, Railway's private-network resolver for Railway) so this
-    # works unmodified in both environments; storing the origin in a variable
-    # is what forces per-request re-resolution instead of load-time caching.
-    resolver local=on valid=10s;
+    # itself is restarted. NGINX_LOCAL_RESOLVERS is populated from the
+    # container's own /etc/resolv.conf by the nginx:alpine image's own
+    # entrypoint script (entrypoint/15-local-resolvers.envsh — enabled via
+    # NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 in the Dockerfile) and substituted
+    # here the same way ${PORT}/${BACKEND_ORIGIN} are, so this resolves
+    # correctly against Docker Compose's embedded DNS (127.0.0.11) and
+    # Railway's private-network resolver without hardcoding either. Storing
+    # the origin in an nginx variable ($backend_origin, below) is what forces
+    # per-request re-resolution instead of load-time caching.
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=10s;
 
     # Proxy API calls to the backend service. BACKEND_ORIGIN is substituted at
     # container start (via envsubst — see the nginx:alpine entrypoint's
