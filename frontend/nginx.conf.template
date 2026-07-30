@@ -30,9 +30,20 @@ server {
     # templates mechanism) so the same image works against Docker Compose's
     # service-name DNS ("backend") or Railway's private-network hostname
     # ("<service>.railway.internal") without a rebuild.
+    #
+    # IMPORTANT: proxy_pass has NO trailing path here (just the bare
+    # variable). When proxy_pass's target is a variable, nginx cannot do its
+    # usual "replace the matched location prefix" URI rewriting — if you
+    # write `proxy_pass $backend_origin/api/;` nginx forwards the LITERAL
+    # string "/api/" to every request, silently dropping everything the
+    # browser sent after it (e.g. POST /api/auth/login was reaching the
+    # backend as just "POST /api/", a 404). With no URI part at all, nginx's
+    # documented behavior is to forward the client's original request URI
+    # unchanged — which is exactly what's wanted here, since the backend is
+    # itself mounted at /api and expects that prefix intact.
     location /api/ {
         set $backend_origin ${BACKEND_ORIGIN};
-        proxy_pass $backend_origin/api/;
+        proxy_pass $backend_origin;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -43,7 +54,7 @@ server {
 
     location /uploads/ {
         set $backend_origin ${BACKEND_ORIGIN};
-        proxy_pass $backend_origin/uploads/;
+        proxy_pass $backend_origin;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
     }
