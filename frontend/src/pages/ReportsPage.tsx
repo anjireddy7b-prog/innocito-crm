@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { FileSpreadsheet, FileText, FileDown, Target, Trophy, XCircle, Percent } from 'lucide-react';
+import { toast } from 'sonner';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { KpiCard } from '@/components/shared/KpiCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,9 +9,23 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { useDashboardSummary } from '@/api/dashboard';
 import { humanizeEnum } from '@/lib/utils';
+import { downloadFile } from '@/lib/download';
+import { apiErrorMessage } from '@/lib/api';
 
 export default function ReportsPage() {
   const { data, isLoading } = useDashboardSummary();
+  const [exportingFormat, setExportingFormat] = useState<'csv' | 'xlsx' | 'pdf' | null>(null);
+
+  async function handleExport(format: 'csv' | 'xlsx' | 'pdf') {
+    setExportingFormat(format);
+    try {
+      await downloadFile(`/reports/leads/export.${format}`, `leads-export.${format}`);
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Failed to export leads'));
+    } finally {
+      setExportingFormat(null);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -18,13 +34,13 @@ export default function ReportsPage() {
         description="Pipeline, campaign, and team performance reports with exportable lead data."
         actions={
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => window.open('/api/reports/leads/export.csv', '_blank')}>
+            <Button variant="outline" onClick={() => handleExport('csv')} loading={exportingFormat === 'csv'}>
               <FileDown /> CSV
             </Button>
-            <Button variant="outline" onClick={() => window.open('/api/reports/leads/export.xlsx', '_blank')}>
+            <Button variant="outline" onClick={() => handleExport('xlsx')} loading={exportingFormat === 'xlsx'}>
               <FileSpreadsheet /> Excel
             </Button>
-            <Button variant="outline" onClick={() => window.open('/api/reports/leads/export.pdf', '_blank')}>
+            <Button variant="outline" onClick={() => handleExport('pdf')} loading={exportingFormat === 'pdf'}>
               <FileText /> PDF
             </Button>
           </div>

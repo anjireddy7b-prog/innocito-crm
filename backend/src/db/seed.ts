@@ -23,6 +23,7 @@ import { roles, permissions, rolePermissions, users, companies, contacts, campai
 import { ALL_PERMISSIONS, ROLE_PERMISSIONS, PERMISSIONS } from '@/utils/permissions';
 import { env } from '@/config/env';
 import { logger } from '@/config/logger';
+import { parseFlexibleDate, splitName, classifyOutcome } from '@/utils/spreadsheetImport';
 
 const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   [PERMISSIONS.USERS_MANAGE]: 'Create users, assign roles, reset passwords, enable/disable accounts',
@@ -135,46 +136,6 @@ function slugifyEmail(name: string): string {
 // ---------------------------------------------------------------------------
 // Spreadsheet import
 // ---------------------------------------------------------------------------
-
-function parseFlexibleDate(value: unknown): Date | null {
-  if (!value) return null;
-  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
-  if (typeof value === 'number') {
-    // Excel serial date
-    const excelEpoch = new Date(Date.UTC(1899, 11, 30));
-    return new Date(excelEpoch.getTime() + value * 86400000);
-  }
-  if (typeof value === 'string') {
-    const cleaned = value
-      .replace(/(\d+)(st|nd|rd|th)/gi, '$1')
-      .replace(/-/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-    const parsed = new Date(cleaned);
-    if (!Number.isNaN(parsed.getTime())) return parsed;
-    const direct = new Date(value);
-    return Number.isNaN(direct.getTime()) ? null : direct;
-  }
-  return null;
-}
-
-function splitName(fullName: string): { firstName: string; lastName: string } {
-  const parts = fullName.trim().split(/\s+/);
-  if (parts.length === 1) return { firstName: parts[0], lastName: '(Unknown)' };
-  return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
-}
-
-function classifyOutcome(comment: string): { leadStatus: string; meetingStatus: string; meetingType: string } {
-  const c = comment.toLowerCase();
-  if (c.includes('no show')) return { leadStatus: 'CONTACTED', meetingStatus: 'NO_SHOW', meetingType: 'DISCOVERY' };
-  if (c.includes('demo')) return { leadStatus: 'DEMO_DONE', meetingStatus: 'COMPLETED', meetingType: 'DEMO' };
-  if (c.includes('not responding')) return { leadStatus: 'ON_HOLD', meetingStatus: 'COMPLETED', meetingType: 'DISCOVERY' };
-  if (c.includes('looking for job') || c.includes('network') || c.includes('partner')) {
-    return { leadStatus: 'DISQUALIFIED', meetingStatus: 'COMPLETED', meetingType: 'DISCOVERY' };
-  }
-  if (!comment) return { leadStatus: 'MEETING_SCHEDULED', meetingStatus: 'SCHEDULED', meetingType: 'DISCOVERY' };
-  return { leadStatus: 'MEETING_DONE', meetingStatus: 'COMPLETED', meetingType: 'DISCOVERY' };
-}
 
 async function seedLeadsFromSpreadsheet(adminId: string, repIdByName: Map<string, string>) {
   const [{ value: existingLeadCount }] = await db.select({ value: count() }).from(leads);

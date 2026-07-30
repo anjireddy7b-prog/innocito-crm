@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Plus, Download, Search } from 'lucide-react';
+import { Plus, Download, Upload, Search } from 'lucide-react';
+import { toast } from 'sonner';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { DataTable, DataTableColumn } from '@/components/shared/DataTable';
 import { Pagination } from '@/components/shared/Pagination';
@@ -12,8 +13,11 @@ import { useLeads } from '@/api/leads';
 import { useAuthStore } from '@/store/authStore';
 import { PERMISSIONS } from '@/lib/permissions';
 import { formatCurrency, formatDate } from '@/lib/utils';
+import { downloadFile } from '@/lib/download';
+import { apiErrorMessage } from '@/lib/api';
 import { LEAD_STATUSES, LEAD_SOURCES, LEAD_PRIORITIES, type Lead } from '@/types';
 import { LeadFormDialog } from '@/pages/leads/LeadFormDialog';
+import { LeadImportDialog } from '@/pages/leads/LeadImportDialog';
 
 export default function LeadsListPage() {
   const [params, setParams] = useSearchParams();
@@ -21,6 +25,19 @@ export default function LeadsListPage() {
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const [search, setSearch] = useState(params.get('search') ?? '');
   const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      await downloadFile('/reports/leads/export.csv', 'leads-export.csv');
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Failed to export leads'));
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const page = Number(params.get('page') ?? 1);
   const sortBy = params.get('sortBy') ?? 'createdAt';
@@ -83,13 +100,18 @@ export default function LeadsListPage() {
         description="Track and manage every inbound and outbound lead through the sales pipeline."
         actions={
           <>
-            <Button variant="outline" onClick={() => window.open('/api/reports/leads/export.csv', '_blank')}>
+            <Button variant="outline" onClick={handleExport} loading={exporting}>
               <Download /> Export CSV
             </Button>
             {hasPermission(PERMISSIONS.LEADS_CREATE) && (
-              <Button onClick={() => setCreateOpen(true)}>
-                <Plus /> New Lead
-              </Button>
+              <>
+                <Button variant="outline" onClick={() => setImportOpen(true)}>
+                  <Upload /> Import
+                </Button>
+                <Button onClick={() => setCreateOpen(true)}>
+                  <Plus /> New Lead
+                </Button>
+              </>
             )}
           </>
         }
@@ -170,6 +192,7 @@ export default function LeadsListPage() {
       )}
 
       <LeadFormDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <LeadImportDialog open={importOpen} onOpenChange={setImportOpen} />
     </div>
   );
 }

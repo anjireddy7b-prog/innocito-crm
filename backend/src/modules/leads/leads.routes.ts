@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate, requirePermission, requireRole } from '@/middleware/auth';
 import { validate } from '@/middleware/validate';
 import { PERMISSIONS } from '@/utils/permissions';
+import { leadImportUpload } from './import.middleware';
 import {
   createLeadSchema,
   updateLeadSchema,
@@ -18,6 +19,12 @@ leadsRouter.use(authenticate);
 leadsRouter.use(requirePermission(PERMISSIONS.LEADS_VIEW));
 
 leadsRouter.get('/', validate(listLeadsQuerySchema, 'query'), controller.list);
+leadsRouter.post(
+  '/import',
+  requirePermission(PERMISSIONS.LEADS_CREATE),
+  leadImportUpload.single('file'),
+  controller.importFile
+);
 leadsRouter.get('/:id', controller.getById);
 leadsRouter.post('/', requirePermission(PERMISSIONS.LEADS_CREATE), validate(createLeadSchema), controller.create);
 leadsRouter.patch('/:id', validate(updateLeadSchema), controller.update);

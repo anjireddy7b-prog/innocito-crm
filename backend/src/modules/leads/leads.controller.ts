@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { asyncHandler } from '@/utils/asyncHandler';
+import { ApiError } from '@/utils/ApiError';
 import * as service from './leads.service';
+import * as importService from './leads.import.service';
 
 export const list = asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, ...(await service.listLeads(req.query as any)) });
@@ -33,4 +35,10 @@ export const changeStatus = asyncHandler(async (req: Request, res: Response) => 
 export const remove = asyncHandler(async (req: Request, res: Response) => {
   await service.deleteLead(req, req.params.id);
   res.status(204).send();
+});
+
+export const importFile = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.file) throw ApiError.badRequest('No file uploaded — attach a .csv or .xlsx file.');
+  const result = await importService.importLeadsFromFile(req, req.file);
+  res.json({ success: true, data: result });
 });

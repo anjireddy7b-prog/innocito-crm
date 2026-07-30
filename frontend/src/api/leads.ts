@@ -118,3 +118,36 @@ export function useBulkAssignLeads() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['leads'] }),
   });
 }
+
+export interface LeadImportResult {
+  totalDataRows: number;
+  created: number;
+  skippedDuplicates: number;
+  skippedInvalidRows: number;
+  errors: { row: number; message: string }[];
+}
+
+export function useImportLeads() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await api.post<ApiEnvelope<LeadImportResult>>('/leads/import', formData);
+      return res.data.data;
+    },
+    onSuccess: () => {
+      // An import can create/update leads, companies, contacts, campaigns,
+      // and meetings all at once, and it changes dashboard KPIs — so every
+      // page that reads any of that needs to refetch, not just the Leads list.
+      qc.invalidateQueries({ queryKey: ['leads'] });
+      qc.invalidateQueries({ queryKey: ['companies'] });
+      qc.invalidateQueries({ queryKey: ['contacts'] });
+      qc.invalidateQueries({ queryKey: ['campaigns'] });
+      qc.invalidateQueries({ queryKey: ['meetings'] });
+      qc.invalidateQueries({ queryKey: ['activities'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['auditLogs'] });
+    },
+  });
+}
