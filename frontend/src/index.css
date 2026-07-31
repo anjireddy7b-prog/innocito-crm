@@ -76,6 +76,36 @@
     --input: 222 20% 20%;
     --ring: 217 91% 62%;
   }
+
+  /*
+   * Persistent dark "chrome" for the top nav + sidebar (applied via the .nav-shell class).
+   * This intentionally overrides the theme variables locally on the header/aside elements so
+   * the nav always renders as a dark charcoal shell with a light-blue accent, regardless of
+   * whether the rest of the app is in light or dark mode — matching the reference layout.
+   */
+  .nav-shell {
+    --background: 0 0% 20%;
+    --foreground: 0 0% 96%;
+
+    --card: 0 0% 20%;
+    --card-foreground: 0 0% 96%;
+
+    --primary: 199 92% 58%;
+    --primary-foreground: 222 47% 11%;
+
+    --secondary: 0 0% 27%;
+    --secondary-foreground: 0 0% 96%;
+
+    --muted: 0 0% 27%;
+    --muted-foreground: 0 0% 68%;
+
+    --accent: 205 20% 32%;
+    --accent-foreground: 199 90% 82%;
+
+    --border: 0 0% 32%;
+    --input: 0 0% 34%;
+    --ring: 199 92% 58%;
+  }
 }
 
 @layer base {

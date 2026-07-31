@@ -41,7 +41,7 @@ export function Sidebar() {
   });
 
   return (
-    <aside className="hidden w-60 shrink-0 border-r border-border bg-card md:flex md:flex-col">
+    <aside className="nav-shell hidden w-60 shrink-0 border-r border-border bg-card text-foreground md:flex md:flex-col">
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
         {visibleItems.map((item) => (
           <NavLink
@@ -50,7 +50,7 @@ export function Sidebar() {
             className={({ isActive }) =>
               cn(
                 'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                isActive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                isActive ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
               )
             }
           >

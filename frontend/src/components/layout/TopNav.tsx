@@ -6,7 +6,7 @@ import innocitoLogo from '@/assets/innocito-logo.png';
 
 export function TopNav() {
   return (
-    <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-4 border-b border-border bg-card px-4">
+    <header className="nav-shell sticky top-0 z-40 flex h-14 shrink-0 items-center gap-4 border-b border-border bg-card px-4 text-foreground">
       <Link to="/dashboard" className="flex shrink-0 items-center">
         <img src={innocitoLogo} alt="Innocito" className="h-7 w-auto" />
       </Link>
