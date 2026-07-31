@@ -3,6 +3,7 @@ import { LayoutGrid } from 'lucide-react';
 import { GlobalSearch } from '@/components/layout/GlobalSearch';
 import { NotificationsMenu } from '@/components/layout/NotificationsMenu';
 import { UserMenu } from '@/components/layout/UserMenu';
+import innocitoLogo from '@/assets/innocito-logo.png';
 
 export function TopNav() {
   return (
@@ -18,9 +19,10 @@ export function TopNav() {
         <GlobalSearch />
       </div>
 
-      <div className="flex shrink-0 items-center gap-1">
+      <div className="flex shrink-0 items-center gap-3">
         <NotificationsMenu />
         <UserMenu />
+        <img src={innocitoLogo} alt="Innocito" className="hidden h-6 w-auto shrink-0 sm:block" />
       </div>
     </header>
   );
