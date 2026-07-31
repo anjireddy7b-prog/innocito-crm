@@ -42,7 +42,7 @@ export function Sidebar() {
 
   return (
     <aside className="nav-shell hidden w-60 shrink-0 border-r border-border bg-card text-foreground md:flex md:flex-col">
-      <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
+      <nav className="scrollbar-none flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
         {visibleItems.map((item) => (
           <NavLink
             key={item.to}

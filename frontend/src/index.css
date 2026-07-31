@@ -125,6 +125,15 @@
     background-color: hsl(0 0% 20%);
   }
 
+  /* Scrolls normally (wheel, trackpad, touch, keyboard) but never draws a visible scrollbar track. */
+  .scrollbar-none {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* legacy Edge/IE */
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Edge (Chromium) */
+  }
+
   .scrollbar-thin {
     scrollbar-width: thin;
   }
