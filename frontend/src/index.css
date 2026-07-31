@@ -119,6 +119,12 @@
 }
 
 @layer utilities {
+  /* Matches the .nav-shell dark chrome color, used to fill the reveal behind the
+     rounded content card without touching the theme variables main's content relies on. */
+  .chrome-fill {
+    background-color: hsl(0 0% 20%);
+  }
+
   .scrollbar-thin {
     scrollbar-width: thin;
   }
