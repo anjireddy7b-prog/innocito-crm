@@ -11,9 +11,11 @@ import { useDashboardSummary } from '@/api/dashboard';
 import { humanizeEnum } from '@/lib/utils';
 import { downloadFile } from '@/lib/download';
 import { apiErrorMessage } from '@/lib/api';
+import { PeriodFilter, type PeriodFilterValue } from '@/components/shared/PeriodFilter';
 
 export default function ReportsPage() {
-  const { data, isLoading } = useDashboardSummary();
+  const [period, setPeriod] = useState<PeriodFilterValue>({ period: 'all' });
+  const { data, isLoading } = useDashboardSummary(period);
   const [exportingFormat, setExportingFormat] = useState<'csv' | 'xlsx' | 'pdf' | null>(null);
 
   async function handleExport(format: 'csv' | 'xlsx' | 'pdf') {
@@ -31,9 +33,14 @@ export default function ReportsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Reports"
-        description="Pipeline, campaign, and team performance reports with exportable lead data."
+        description={
+          data?.appliedPeriod && data.appliedPeriod.period !== 'all'
+            ? `Showing ${data.appliedPeriod.label} — pipeline, campaign, and team performance.`
+            : 'Pipeline, campaign, and team performance reports with exportable lead data.'
+        }
         actions={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <PeriodFilter value={period} onChange={setPeriod} />
             <Button variant="outline" onClick={() => handleExport('csv')} loading={exportingFormat === 'csv'}>
               <FileDown /> CSV
             </Button>

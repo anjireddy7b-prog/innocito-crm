@@ -272,4 +272,5 @@ export interface DashboardSummary {
   campaignPerformance: { id: string; name: string; code: string | null; totalLeads: number; won: number; lost: number }[];
   representativePerformance: { userId: string; name: string; role: string; totalLeads: number; won: number; lost: number; inProgress: number }[];
   monthlyTrends: { month: string; count: number }[];
+  appliedPeriod?: { period: 'all' | 'year' | 'quarter' | 'month'; year?: number; quarter?: number; month?: number; label: string };
 }

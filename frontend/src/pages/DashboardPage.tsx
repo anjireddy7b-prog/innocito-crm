@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell,
   AreaChart, Area,
@@ -6,6 +7,7 @@ import { Target, CheckCircle2, CalendarClock, TrendingUp, Trophy, XCircle, Perce
 import { useDashboardSummary } from '@/api/dashboard';
 import { KpiCard } from '@/components/shared/KpiCard';
 import { PageHeader } from '@/components/shared/PageHeader';
+import { PeriodFilter, type PeriodFilterValue } from '@/components/shared/PeriodFilter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
@@ -13,12 +15,17 @@ import { humanizeEnum } from '@/lib/utils';
 import { CATEGORICAL, CHART_INK, LEAD_SOURCE_COLORS, pipelineColor, STATUS } from '@/lib/chartColors';
 
 export default function DashboardPage() {
-  const { data, isLoading } = useDashboardSummary();
+  const [period, setPeriod] = useState<PeriodFilterValue>({ period: 'all' });
+  const { data, isLoading } = useDashboardSummary(period);
 
   if (isLoading || !data) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Dashboard" description="Real-time visibility into pipeline health and team performance." />
+        <PageHeader
+          title="Dashboard"
+          description="Real-time visibility into pipeline health and team performance."
+          actions={<PeriodFilter value={period} onChange={setPeriod} />}
+        />
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           {Array.from({ length: 7 }).map((_, i) => (
             <Skeleton key={i} className="h-28 rounded-xl" />
@@ -33,7 +40,15 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Dashboard" description="Real-time visibility into pipeline health, campaigns, and team performance." />
+      <PageHeader
+        title="Dashboard"
+        description={
+          data.appliedPeriod && data.appliedPeriod.period !== 'all'
+            ? `Showing ${data.appliedPeriod.label} — pipeline health, campaigns, and team performance.`
+            : 'Real-time visibility into pipeline health, campaigns, and team performance.'
+        }
+        actions={<PeriodFilter value={period} onChange={setPeriod} />}
+      />
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-7">
         <KpiCard label="Total Leads" value={kpis.totalLeads} icon={Target} accent="primary" />

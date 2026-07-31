@@ -147,7 +147,7 @@ for the campaign-performance view.
 
 | Method | Path | Permission | Notes |
 |---|---|---|---|
-| GET | `/summary` | `dashboard:view` | Single aggregate payload (KPIs, pipeline-by-stage, lead-source breakdown, country distribution, campaign performance, rep performance, monthly trend) — cached in Redis (60s TTL) since it's the one genuinely expensive query in the app. |
+| GET | `/summary?period=&year=&quarter=&month=` | `dashboard:view` | Single aggregate payload (KPIs, pipeline-by-stage, lead-source breakdown, country distribution, campaign performance, rep performance, monthly trend) — cached in Redis (60s TTL) since it's the one genuinely expensive query in the app. `period` is `all` (default), `year`, `quarter`, or `month`; `year` is required unless `period=all`, `quarter` (1-4) is required when `period=quarter`, `month` (1-12) is required when `period=month`. When a period is given, every lead/meeting-derived figure is scoped to that date range (e.g. `?period=quarter&year=2026&quarter=3` = Jul-Sep 2026); with no `period`, behavior is unchanged (all-time). The response includes `appliedPeriod: { period, year?, quarter?, month?, label }` describing what was actually applied. The cache key is parameterized by period so different filter selections don't collide. |
 
 ## Search — `/api/search`
 

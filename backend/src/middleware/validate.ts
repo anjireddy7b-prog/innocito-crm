@@ -1,11 +1,11 @@
 import { NextFunction, Request, Response } from 'express';
-import { AnyZodObject, ZodError } from 'zod';
+import { ZodError, ZodTypeAny } from 'zod';
 import { ApiError } from '@/utils/ApiError';
 
 type Target = 'body' | 'query' | 'params';
 
 /** Validates & replaces req[target] with the parsed (and coerced) Zod result. */
-export function validate(schema: AnyZodObject, target: Target = 'body') {
+export function validate(schema: ZodTypeAny, target: Target = 'body') {
   return (req: Request, _res: Response, next: NextFunction) => {
     try {
       const parsed = schema.parse(req[target]);
