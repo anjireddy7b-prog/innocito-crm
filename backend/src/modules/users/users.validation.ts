@@ -12,6 +12,11 @@ export const createUserSchema = z.object({
 });
 
 export const updateUserSchema = z.object({
+  // Admin-editable: the Email ID is this user's primary address for every system-generated
+  // notification (lead assignment, status changes, task/meeting alerts, etc. — see
+  // utils/notifier.ts). Changing it here takes effect immediately and is audit-logged
+  // (see users.service.ts's updateUser()); uniqueness is enforced case-insensitively below.
+  email: z.string().email('Enter a valid email').max(255).optional(),
   firstName: z.string().min(1).max(100).optional(),
   lastName: z.string().min(1).max(100).optional(),
   phone: z.string().max(30).optional().nullable(),

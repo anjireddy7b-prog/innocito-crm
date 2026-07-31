@@ -10,7 +10,10 @@ import { useAuditLogs } from '@/api/auditLogs';
 import { formatDateTime, humanizeEnum } from '@/lib/utils';
 import type { AuditLogEntry } from '@/types';
 
-const ACTIONS = ['CREATE', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT', 'EXPORT', 'ASSIGN', 'STATUS_CHANGE'];
+const ACTIONS = [
+  'CREATE', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT', 'LOGIN_FAILED', 'PASSWORD_RESET',
+  'ROLE_CHANGED', 'STATUS_CHANGED', 'ASSIGNMENT_CHANGED', 'EMAIL_CHANGED', 'EXPORT',
+];
 const ENTITY_TYPES = ['Lead', 'Company', 'Contact', 'Campaign', 'Meeting', 'Task', 'Document', 'User', 'Comment'];
 
 const ACTION_STYLES: Record<string, string> = {
@@ -19,9 +22,13 @@ const ACTION_STYLES: Record<string, string> = {
   DELETE: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
   LOGIN: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
   LOGOUT: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+  LOGIN_FAILED: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+  PASSWORD_RESET: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
   EXPORT: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-  ASSIGN: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
-  STATUS_CHANGE: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
+  ASSIGNMENT_CHANGED: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
+  ROLE_CHANGED: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
+  STATUS_CHANGED: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
+  EMAIL_CHANGED: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300',
 };
 
 export default function AuditLogsPage() {

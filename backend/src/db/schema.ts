@@ -47,7 +47,7 @@ export const notificationTypeEnum = pgEnum('notification_type', [
 ]);
 export const auditActionEnum = pgEnum('audit_action', [
   'CREATE', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT', 'LOGIN_FAILED', 'PASSWORD_RESET',
-  'ROLE_CHANGED', 'STATUS_CHANGED', 'ASSIGNMENT_CHANGED', 'EXPORT',
+  'ROLE_CHANGED', 'STATUS_CHANGED', 'ASSIGNMENT_CHANGED', 'EXPORT', 'EMAIL_CHANGED',
 ]);
 
 // ----------------------------------------------------------------------------

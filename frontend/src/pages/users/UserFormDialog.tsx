@@ -63,6 +63,7 @@ export function UserFormDialog({
     try {
       if (isEdit) {
         await updateUser.mutateAsync({
+          email: values.email,
           firstName: values.firstName,
           lastName: values.lastName,
           phone: values.phone || undefined,
@@ -97,7 +98,9 @@ export function UserFormDialog({
         <DialogHeader>
           <DialogTitle>{isEdit ? 'Edit User' : 'New User'}</DialogTitle>
           <DialogDescription>
-            {isEdit ? 'Update role and profile details.' : 'Only Admins can create accounts — a temporary password will be generated automatically.'}
+            {isEdit
+              ? "Update role and profile details. Changing the Email ID updates this user's login and the address every system notification is sent to."
+              : 'Only Admins can create accounts — a temporary password will be generated automatically.'}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -113,8 +116,13 @@ export function UserFormDialog({
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <Label>Email *</Label>
-            <Input type="email" {...register('email')} placeholder="jane.doe@innocito.com" disabled={isEdit} />
+            <Input type="email" {...register('email')} placeholder="jane.doe@innocito.com" />
             {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
+            {isEdit && (
+              <p className="text-xs text-muted-foreground">
+                This is the user's login and the address all notifications (lead assignments, status changes, alerts) go to. Changing it takes effect immediately and is recorded in the audit log.
+              </p>
+            )}
           </div>
           <div className="space-y-1.5">
             <Label>Phone</Label>

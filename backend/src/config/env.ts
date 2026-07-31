@@ -16,6 +16,16 @@ const envSchema = z.object({
   UPLOAD_DIR: z.string().default('./uploads'),
   MAX_UPLOAD_MB: z.coerce.number().default(15),
   LOG_LEVEL: z.string().default('info'),
+
+  // Outbound email (optional). When unset, utils/emailer.ts logs instead of sending — every
+  // notification call site is already wired to it, so filling these in later is all that's needed
+  // to turn on real delivery, no code changes required. SMTP_HOST is the on/off switch.
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().default(587),
+  SMTP_SECURE: z.coerce.boolean().default(false),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASSWORD: z.string().optional(),
+  SMTP_FROM: z.string().default('Innocito CRM <notifications@innocito.com>'),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -29,3 +39,5 @@ if (!parsed.success) {
 export const env = parsed.data;
 export const isProd = env.NODE_ENV === 'production';
 export const isTest = env.NODE_ENV === 'test';
+// True once real SMTP credentials are configured — see utils/emailer.ts.
+export const emailEnabled = !!env.SMTP_HOST;

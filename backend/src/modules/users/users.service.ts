@@ -1,7 +1,7 @@
 import argon2 from 'argon2';
 import crypto from 'crypto';
 import { Request } from 'express';
-import { and, asc, desc, eq, ilike, or, count, SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, ne, or, count, SQL } from 'drizzle-orm';
 import { db } from '@/config/db';
 import { users, roles } from '@/db/schema';
 import { ApiError } from '@/utils/ApiError';
@@ -130,7 +130,7 @@ export async function createUser(
 export async function updateUser(
   req: Request,
   id: string,
-  input: { firstName?: string; lastName?: string; phone?: string | null; jobTitle?: string | null; roleName?: string }
+  input: { email?: string; firstName?: string; lastName?: string; phone?: string | null; jobTitle?: string | null; roleName?: string }
 ) {
   const before = await db.query.users.findFirst({ where: eq(users.id, id) });
   if (!before) throw ApiError.notFound('User not found');
@@ -142,9 +142,24 @@ export async function updateUser(
     roleId = role.id;
   }
 
+  // Email ID — this is the address every system-generated notification is sent to (see
+  // utils/notifier.ts, which always reads it fresh rather than caching it anywhere). Normalize
+  // case the same way login/creation do, and only touch it — or check uniqueness — when it's
+  // actually changing, so re-submitting the form with the same email is always a no-op here.
+  let newEmail: string | undefined;
+  const emailChanged = input.email !== undefined && input.email.toLowerCase() !== before.email.toLowerCase();
+  if (emailChanged) {
+    newEmail = input.email!.toLowerCase();
+    const existing = await db.query.users.findFirst({
+      where: and(eq(users.email, newEmail), ne(users.id, id)),
+    });
+    if (existing) throw ApiError.conflict('A user with this email already exists');
+  }
+
   await db
     .update(users)
     .set({
+      ...(newEmail !== undefined ? { email: newEmail } : {}),
       firstName: input.firstName,
       lastName: input.lastName,
       phone: input.phone === null ? null : input.phone,
@@ -164,6 +179,20 @@ export async function updateUser(
     oldValues: { firstName: before.firstName, lastName: before.lastName, roleId: before.roleId },
     newValues: user,
   });
+
+  // A dedicated, always-present audit entry for Email ID changes specifically — kept separate from
+  // the general UPDATE/ROLE_CHANGED entry above (which can be about anything) so "who changed this
+  // user's notification email, and when, and from what to what" is never buried in a generic diff.
+  if (emailChanged) {
+    await recordAudit({
+      req,
+      action: 'EMAIL_CHANGED',
+      entityType: 'User',
+      entityId: id,
+      oldValues: { email: before.email },
+      newValues: { email: newEmail },
+    });
+  }
 
   return user;
 }

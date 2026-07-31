@@ -41,9 +41,35 @@ entity-specific filters, and `sortBy`/`sortDir=asc|desc`.
 | GET | `/` | `ADMIN` role | Paginated, filterable by `search`, `roleName`, `isActive`. |
 | GET | `/:id` | `ADMIN` role | |
 | POST | `/` | `ADMIN` role | Creates a user with a generated temporary password (no self-registration exists anywhere in the API). |
-| PATCH | `/:id` | `ADMIN` role | Update profile fields / role. |
+| PATCH | `/:id` | `ADMIN` role | Update profile fields / role / **Email ID**. `email` is validated (`z.string().email()`) and checked for uniqueness case-insensitively across all other users (409 `Conflict` if taken); re-submitting the user's current email is a no-op. A change writes a dedicated `EMAIL_CHANGED` audit log entry (`oldValues.email` / `newValues.email`), separate from the general `UPDATE`/`ROLE_CHANGED` entry for the rest of the request. |
 | PATCH | `/:id/active` | `ADMIN` role | `{ isActive }` — disabling immediately revokes that user's refresh tokens. Admins cannot disable themselves. |
 | POST | `/:id/reset-password` | `ADMIN` role | Generates and returns a new temporary password. |
+
+**Email ID is the single source of truth for where notifications go.** Nothing in
+the codebase caches or snapshots a user's email address anywhere else —
+`utils/notifier.ts`'s `notifyUser()` (the one function every lead-assignment,
+status-change, and task-assignment notification already goes through) looks
+up `users.email` fresh from the database on every call, keyed by `userId`.
+So the moment an Admin changes a user's Email ID via `PATCH /users/:id`, that
+new address is what the next notification — of any kind already wired up —
+uses, automatically, no extra configuration.
+
+**Outbound email is a scaffold, not yet turned on.** This app has no email
+provider configured (no SMTP/SendGrid/SES credentials exist anywhere in this
+repo). `utils/emailer.ts` is a provider-agnostic `sendEmail()` that
+`notifyUser()` already calls for every notification; while `SMTP_HOST` is
+unset it just logs what would have been sent and returns, so nothing
+silently claims to have delivered mail that didn't go anywhere. Setting
+`SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASSWORD`/`SMTP_FROM` (see
+`.env.example`) turns on real delivery with no other code changes — it will
+immediately start using whatever email is currently on each user's account.
+Two notification types the request mentioned — meeting reminders and overdue
+task alerts — aren't triggered by anything yet either (there's no scheduled
+job in this codebase); "comment mention" detection doesn't exist yet in the
+Comments feature. Wiring those is a larger, separate piece of work from
+enabling email delivery itself. Password-reset emails deliberately do **not**
+email the plaintext temporary password (a well-known anti-pattern) — an
+Admin still relays it out of band, same as today.
 
 ## Roles — `/api/roles`
 
