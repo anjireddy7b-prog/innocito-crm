@@ -19,16 +19,19 @@ async function fetchLeadsForExport() {
     where: eq(leads.isActive, true),
     orderBy: desc(leads.createdAt),
     with: {
-      company: { columns: { name: true, country: true } },
+      company: { columns: { name: true, country: true, state: true, industry: true, website: true, annualRevenue: true } },
       contact: { columns: { firstName: true, lastName: true, email: true, phone: true, designation: true } },
       campaign: { columns: { name: true, code: true } },
       assignedTo: { columns: { firstName: true, lastName: true } },
       currentOwner: { columns: { firstName: true, lastName: true } },
+      sdr: { columns: { firstName: true, lastName: true } },
+      meetings: { columns: { scheduledAt: true, timeZone: true }, orderBy: (m, { desc }) => [desc(m.scheduledAt)], limit: 1 },
     },
   });
 }
 
 function toRow(l: Awaited<ReturnType<typeof fetchLeadsForExport>>[number]) {
+  const nextMeeting = l.meetings?.[0];
   return {
     'Lead ID': formatLeadNumber(l.leadNumber),
     'Company': l.company?.name ?? '',
@@ -37,6 +40,10 @@ function toRow(l: Awaited<ReturnType<typeof fetchLeadsForExport>>[number]) {
     'Email': l.contact?.email ?? '',
     'Phone': l.contact?.phone ?? '',
     'Country': l.company?.country ?? '',
+    'State': l.company?.state ?? '',
+    'Industry': l.company?.industry ?? '',
+    'Website': l.company?.website ?? '',
+    'Revenue': l.company?.annualRevenue ? Number(l.company.annualRevenue) : '',
     'Source': l.source,
     'Campaign': l.campaign?.name ?? '',
     'Status': l.status,
@@ -44,6 +51,11 @@ function toRow(l: Awaited<ReturnType<typeof fetchLeadsForExport>>[number]) {
     'Deal Value': l.dealValue ? Number(l.dealValue) : '',
     'Assigned To': l.assignedTo ? `${l.assignedTo.firstName} ${l.assignedTo.lastName}` : '',
     'Current Owner': l.currentOwner ? `${l.currentOwner.firstName} ${l.currentOwner.lastName}` : '',
+    'SDR Name': l.sdr ? `${l.sdr.firstName} ${l.sdr.lastName}` : '',
+    'Lead Received Date': l.leadReceivedDate.toISOString().slice(0, 10),
+    'Meeting Scheduled At': nextMeeting ? nextMeeting.scheduledAt.toISOString().slice(0, 16).replace('T', ' ') : '',
+    'Meeting Time Zone': nextMeeting?.timeZone ?? '',
+    'Email Response': l.emailResponse ?? '',
     'Next Steps': l.nextSteps ?? '',
     'Created At': l.createdAt.toISOString().slice(0, 10),
   };

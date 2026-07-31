@@ -38,6 +38,9 @@ export interface CompanySummary {
   domain?: string | null;
   industry?: string | null;
   country?: string | null;
+  state?: string | null;
+  website?: string | null;
+  annualRevenue?: string | null;
 }
 
 export interface ContactSummary {
@@ -76,8 +79,10 @@ export interface Lead {
   assignedToId: string | null;
   currentOwnerId: string | null;
   createdById: string | null;
+  sdrId: string | null;
+  leadReceivedDate: string;
   meetingDetails: string | null;
-  comments: string | null;
+  emailResponse: string | null;
   mom: string | null;
   nextSteps: string | null;
   isActive: boolean;
@@ -89,6 +94,7 @@ export interface Lead {
   assignedTo: UserSummary | null;
   currentOwner: UserSummary | null;
   createdBy: UserSummary | null;
+  sdr: UserSummary | null;
   _count?: { meetings: number; tasks: number; documents: number; leadComments: number };
   meetings?: Meeting[];
   tasks?: Task[];
@@ -109,6 +115,7 @@ export interface Meeting {
   attendees: string[];
   mom: string | null;
   outcome: string | null;
+  timeZone: string | null;
   createdAt: string;
 }
 

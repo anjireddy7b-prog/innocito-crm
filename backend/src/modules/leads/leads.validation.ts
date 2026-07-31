@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { paginationSchema } from '@/utils/pagination';
+import { websiteSchema } from '@/utils/leadFormOptions';
 
 const LEAD_SOURCES = ['EMAIL', 'LINKEDIN', 'COLD_CALLING', 'REFERRAL', 'WEBSITE', 'EVENT', 'PARTNER', 'OTHER'] as const;
 const LEAD_STATUSES = [
@@ -7,10 +8,28 @@ const LEAD_STATUSES = [
   'DEMO_DONE', 'PROPOSAL_SENT', 'NEGOTIATION', 'ON_HOLD', 'WON', 'LOST', 'DISQUALIFIED',
 ] as const;
 const LEAD_PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as const;
+// 24-hour "HH:MM" — kept as a plain string (not combined into a Date) until the service layer
+// merges it with meetingScheduledDate, since the two arrive as separate form fields.
+const TIME_HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 export const createLeadSchema = z.object({
   companyId: z.string().uuid().optional().nullable(),
   companyName: z.string().max(255).optional(), // convenience: create-or-link company by name
+  // Convenience: fill in details for a brand-new company created inline from the Lead form
+  // (Revenue, Industry, Country, State, Website). Only applied when a NEW company is being
+  // created here — an existing company matched by name keeps its own stored details untouched,
+  // so creating a second lead for a known company can never silently overwrite its record.
+  company: z
+    .object({
+      // Curated dropdown values in the UI (INDUSTRY_OPTIONS/COUNTRY_OPTIONS in leadFormOptions.ts);
+      // kept as plain strings here for the same backward-compatibility reason as companies.validation.ts.
+      industry: z.string().max(150).optional().nullable(),
+      country: z.string().max(120).optional().nullable(),
+      state: z.string().max(120).optional().nullable(),
+      website: websiteSchema,
+      annualRevenue: z.coerce.number().optional().nullable(),
+    })
+    .optional(),
   contactId: z.string().uuid().optional().nullable(),
   contact: z
     .object({
@@ -38,9 +57,21 @@ export const createLeadSchema = z.object({
 
   assignedToId: z.string().uuid().optional().nullable(),
   currentOwnerId: z.string().uuid().optional().nullable(),
+  // SDR (Sales Development Rep) — always a real, active INSIDE_SALES user id; the dropdown that
+  // supplies this value is populated live from /users/assignable?roles=INSIDE_SALES.
+  sdrId: z.string().uuid().optional().nullable(),
+
+  // Defaults to "today" at the DB layer (leads.leadReceivedDate has a defaultNow()) when omitted.
+  leadReceivedDate: z.coerce.date().optional().nullable(),
+
+  // Optional meeting captured at lead-creation time; if scheduledDate is present a Meeting row is
+  // created alongside the lead (mirrors the existing CSV-import meeting-creation behavior).
+  meetingScheduledDate: z.coerce.date().optional().nullable(),
+  meetingScheduledTime: z.string().regex(TIME_HHMM, 'Use HH:MM (24-hour)').optional().nullable(),
+  meetingTimeZone: z.string().max(50).optional().nullable(),
 
   meetingDetails: z.string().max(5000).optional().nullable(),
-  comments: z.string().max(5000).optional().nullable(),
+  emailResponse: z.string().max(5000).optional().nullable(),
   mom: z.string().max(10000).optional().nullable(),
   nextSteps: z.string().max(2000).optional().nullable(),
 });
@@ -70,8 +101,10 @@ export const listLeadsQuerySchema = paginationSchema.extend({
   campaignId: z.string().uuid().optional(),
   assignedToId: z.string().uuid().optional(),
   currentOwnerId: z.string().uuid().optional(),
+  sdrId: z.string().uuid().optional(),
   companyId: z.string().uuid().optional(),
   country: z.string().optional(),
+  industry: z.string().optional(),
   dateFrom: z.coerce.date().optional(),
   dateTo: z.coerce.date().optional(),
 });

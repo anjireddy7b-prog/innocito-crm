@@ -132,8 +132,10 @@ export default function LeadDetailPage() {
                     <Building2 className="h-3.5 w-3.5" />{lead.company.name}
                   </Link>
                   {lead.company.domain && <p className="flex items-center gap-2 text-muted-foreground"><Globe2 className="h-3.5 w-3.5" />{lead.company.domain}</p>}
-                  {lead.company.country && <p className="text-muted-foreground">{lead.company.country}</p>}
+                  {lead.company.website && <p className="flex items-center gap-2 text-muted-foreground"><Globe2 className="h-3.5 w-3.5" /><a href={lead.company.website} target="_blank" rel="noreferrer" className="hover:text-primary hover:underline">{lead.company.website}</a></p>}
                   {lead.company.industry && <p className="text-muted-foreground">{lead.company.industry}</p>}
+                  {(lead.company.state || lead.company.country) && <p className="text-muted-foreground">{[lead.company.state, lead.company.country].filter(Boolean).join(', ')}</p>}
+                  {lead.company.annualRevenue && <p className="text-muted-foreground">Revenue: {formatCurrency(lead.company.annualRevenue, 'USD')}</p>}
                 </>
               ) : (
                 <p className="text-muted-foreground">No company linked.</p>
@@ -156,15 +158,20 @@ export default function LeadDetailPage() {
                 <span className="text-muted-foreground">Current Owner</span>
                 <span>{lead.currentOwner ? `${lead.currentOwner.firstName} ${lead.currentOwner.lastName}` : 'Unassigned'}</span>
               </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">SDR Name</span>
+                <span>{lead.sdr ? `${lead.sdr.firstName} ${lead.sdr.lastName}` : '—'}</span>
+              </div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Lead Received</span><span>{formatDate(lead.leadReceivedDate)}</span></div>
               {lead.lossReason && <div className="flex justify-between"><span className="text-muted-foreground">Loss Reason</span><span className="text-destructive">{lead.lossReason}</span></div>}
             </CardContent>
           </Card>
 
-          {(lead.comments || lead.nextSteps || lead.mom) && (
+          {(lead.emailResponse || lead.nextSteps || lead.mom) && (
             <Card>
               <CardHeader><CardTitle>Legacy Notes</CardTitle></CardHeader>
               <CardContent className="space-y-3 text-sm">
-                {lead.comments && <div><p className="text-xs font-medium text-muted-foreground">Comments</p><p className="whitespace-pre-wrap">{lead.comments}</p></div>}
+                {lead.emailResponse && <div><p className="text-xs font-medium text-muted-foreground">Email Response</p><p className="whitespace-pre-wrap">{lead.emailResponse}</p></div>}
                 {lead.nextSteps && <div><p className="text-xs font-medium text-muted-foreground">Next Steps</p><p className="whitespace-pre-wrap">{lead.nextSteps}</p></div>}
                 {lead.mom && <div><p className="text-xs font-medium text-muted-foreground">MoM</p><p className="whitespace-pre-wrap">{lead.mom}</p></div>}
               </CardContent>

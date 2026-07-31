@@ -6,6 +6,7 @@ import { ApiError } from '@/utils/ApiError';
 import { recordAudit } from '@/utils/auditLogger';
 import { cache } from '@/config/redis';
 import { readSpreadsheetRows, findColumn, parseFlexibleDate, splitName, classifyOutcome } from '@/utils/spreadsheetImport';
+import { normalizeWebsite } from '@/utils/leadFormOptions';
 
 const LEAD_STATUSES = new Set([
   'NEW', 'CONTACTED', 'QUALIFIED', 'MEETING_SCHEDULED', 'MEETING_DONE', 'DEMO_SCHEDULED',
@@ -32,6 +33,7 @@ export async function importLeadsFromFile(req: Request, file: Express.Multer.Fil
 
   const idx = {
     istRep: findColumn(headers, ['IST Rep', 'Rep', 'Sales Rep', 'Assigned Rep']),
+    sdr: findColumn(headers, ['SDR', 'SDR Name']),
     name: findColumn(headers, ['Name', 'Contact Name', 'Full Name']),
     designation: findColumn(headers, ['Designation', 'Title', 'Job Title']),
     email: findColumn(headers, ['Email ID', 'Email', 'Email Address']),
@@ -40,11 +42,15 @@ export async function importLeadsFromFile(req: Request, file: Express.Multer.Fil
     city: findColumn(headers, ['City']),
     state: findColumn(headers, ['State']),
     country: findColumn(headers, ['Country']),
+    industry: findColumn(headers, ['Industry']),
+    website: findColumn(headers, ['Website', 'Website URL']),
+    revenue: findColumn(headers, ['Revenue', 'Annual Revenue']),
     source: findColumn(headers, ['Email/Cold Calling', 'Source']),
     status: findColumn(headers, ['Status']),
     campaign: findColumn(headers, ['Campaign']),
     meetingDate: findColumn(headers, ['Meeting Date', 'Date']),
-    comments: findColumn(headers, ['Comments', 'Comment', 'Notes']),
+    leadReceivedDate: findColumn(headers, ['Lead Received Date', 'Received Date']),
+    emailResponse: findColumn(headers, ['Email Response', 'Comments', 'Comment', 'Notes']),
     category: findColumn(headers, ['Category']),
   };
 
@@ -75,12 +81,16 @@ export async function importLeadsFromFile(req: Request, file: Express.Multer.Fil
       const { firstName, lastName } = splitName(name);
       const repName = cell(row, idx.istRep);
       const repId = userIdByName.get(repName.toLowerCase()) ?? req.user!.sub;
+      // SDR defaults to the importing/assigned rep when the file has no distinct SDR column.
+      const sdrName = cell(row, idx.sdr);
+      const sdrId = sdrName ? (userIdByName.get(sdrName.toLowerCase()) ?? repId) : repId;
 
       // Company — dedupe by name (case-insensitive), same convention used
       // everywhere else in the app (leads.service.ts resolveCompanyAndContact).
       const companyName = companyNameRaw.split(',')[0].trim(); // strip trailing "City, State, USA" some rows include
       let company = await db.query.companies.findFirst({ where: ilike(companies.name, companyName) });
       if (!company) {
+        const revenueRaw = cell(row, idx.revenue).replace(/[^0-9.]/g, '');
         const [createdCompany] = await db
           .insert(companies)
           .values({
@@ -88,6 +98,9 @@ export async function importLeadsFromFile(req: Request, file: Express.Multer.Fil
             city: cell(row, idx.city) || null,
             state: cell(row, idx.state) || null,
             country: cell(row, idx.country) || null,
+            industry: cell(row, idx.industry) || null,
+            website: normalizeWebsite(cell(row, idx.website) || null),
+            annualRevenue: revenueRaw || undefined,
             createdById: repId,
           })
           .returning();
@@ -154,11 +167,12 @@ export async function importLeadsFromFile(req: Request, file: Express.Multer.Fil
       const sourceRaw = cell(row, idx.source).toLowerCase();
       const source = sourceRaw.includes('linkedin') ? 'LINKEDIN' : sourceRaw.includes('email') ? 'EMAIL' : sourceRaw.includes('cold') ? 'COLD_CALLING' : 'OTHER';
 
-      const comment = cell(row, idx.comments);
+      const comment = cell(row, idx.emailResponse);
       const explicitStatus = cell(row, idx.status).toUpperCase().replace(/\s+/g, '_');
       const { leadStatus, meetingStatus, meetingType } = classifyOutcome(comment);
       const status = LEAD_STATUSES.has(explicitStatus) ? explicitStatus : leadStatus;
       const meetingDate = parseFlexibleDate(idx.meetingDate >= 0 ? row[idx.meetingDate] : null);
+      const receivedDate = parseFlexibleDate(idx.leadReceivedDate >= 0 ? row[idx.leadReceivedDate] : null);
 
       const [lead] = await db
         .insert(leads)
@@ -169,9 +183,11 @@ export async function importLeadsFromFile(req: Request, file: Express.Multer.Fil
           source: source as any,
           status: status as any,
           category: cell(row, idx.category) || null,
-          comments: comment || null,
+          emailResponse: comment || null,
           assignedToId: repId,
           currentOwnerId: repId,
+          sdrId,
+          leadReceivedDate: receivedDate ?? undefined,
           createdById: repId,
         })
         .returning();

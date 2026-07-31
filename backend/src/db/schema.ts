@@ -215,11 +215,23 @@ export const leads = pgTable(
     assignedToId: uuid('assigned_to_id').references(() => users.id),
     currentOwnerId: uuid('current_owner_id').references(() => users.id),
     createdById: uuid('created_by_id').references(() => users.id),
+    // SDR (Sales Development Rep) who sourced/qualified the lead — distinct from
+    // assignedToId (current working rep) and currentOwnerId (current owner);
+    // always drawn from active INSIDE_SALES users, never a free-text name.
+    sdrId: uuid('sdr_id').references(() => users.id),
 
     meetingDetails: text('meeting_details'),
-    comments: text('comments'),
+    // Renamed from "comments" to "Email Response" per the lead-creation module
+    // enhancement — the column itself is renamed (not just relabeled) so API
+    // payloads, exports, and search stay consistent with the new UI label.
+    emailResponse: text('email_response'),
     mom: text('mom'),
     nextSteps: text('next_steps'),
+
+    // Date the lead was received (defaults to today at creation, editable afterward
+    // by anyone with edit rights on the lead — separate from createdAt, which is a
+    // pure system audit timestamp and should never be hand-edited).
+    leadReceivedDate: timestamp('lead_received_date').notNull().defaultNow(),
 
     isActive: boolean('is_active').notNull().default(true),
     createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -229,12 +241,14 @@ export const leads = pgTable(
     index('leads_status_idx').on(t.status),
     index('leads_assigned_to_idx').on(t.assignedToId),
     index('leads_current_owner_idx').on(t.currentOwnerId),
+    index('leads_sdr_idx').on(t.sdrId),
     index('leads_company_idx').on(t.companyId),
     index('leads_contact_idx').on(t.contactId),
     index('leads_campaign_idx').on(t.campaignId),
     index('leads_source_idx').on(t.source),
     index('leads_created_at_idx').on(t.createdAt),
     index('leads_priority_idx').on(t.priority),
+    index('leads_received_date_idx').on(t.leadReceivedDate),
   ]
 );
 
@@ -250,6 +264,9 @@ export const meetings = pgTable(
     type: meetingTypeEnum('type').notNull().default('DISCOVERY'),
     status: meetingStatusEnum('status').notNull().default('SCHEDULED'),
     scheduledAt: timestamp('scheduled_at').notNull(),
+    // One of the predefined US timezone codes (EST/CST/MST/PST) when the lead's
+    // country is USA, or whatever the lead creator typed for a non-US/manual entry.
+    timeZone: varchar('time_zone', { length: 50 }),
     durationMins: integer('duration_mins').notNull().default(30),
     location: text('location'),
     attendees: text('attendees').array().notNull().default(sql`'{}'::text[]`),
@@ -401,6 +418,7 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   refreshTokens: many(refreshTokens),
   assignedLeads: many(leads, { relationName: 'leadAssignedTo' }),
   ownedLeads: many(leads, { relationName: 'leadOwner' }),
+  sdrLeads: many(leads, { relationName: 'leadSdr' }),
 }));
 
 export const companiesRelations = relations(companies, ({ many }) => ({
@@ -426,6 +444,7 @@ export const leadsRelations = relations(leads, ({ one, many }) => ({
   campaign: one(campaigns, { fields: [leads.campaignId], references: [campaigns.id] }),
   assignedTo: one(users, { fields: [leads.assignedToId], references: [users.id], relationName: 'leadAssignedTo' }),
   currentOwner: one(users, { fields: [leads.currentOwnerId], references: [users.id], relationName: 'leadOwner' }),
+  sdr: one(users, { fields: [leads.sdrId], references: [users.id], relationName: 'leadSdr' }),
   createdBy: one(users, { fields: [leads.createdById], references: [users.id] }),
   meetings: many(meetings),
   tasks: many(tasks),

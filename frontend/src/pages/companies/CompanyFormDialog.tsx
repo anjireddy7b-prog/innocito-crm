@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
@@ -8,8 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCreateCompany, useUpdateCompany } from '@/api/companies';
 import { apiErrorMessage } from '@/lib/api';
+import { INDUSTRY_OPTIONS, COUNTRY_OPTIONS } from '@/lib/leadFormOptions';
 import type { Company } from '@/types';
 
 const schema = z.object({
@@ -54,7 +56,7 @@ export function CompanyFormDialog({ company, open, onOpenChange }: { company?: C
   const createCompany = useCreateCompany();
   const updateCompany = useUpdateCompany(company?.id ?? '');
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
+  const { register, handleSubmit, reset, control, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: toDefaults(company),
   });
@@ -120,7 +122,24 @@ export function CompanyFormDialog({ company, open, onOpenChange }: { company?: C
           </div>
           <div className="space-y-1.5">
             <Label>Industry</Label>
-            <Input {...register('industry')} placeholder="Software / Manufacturing / …" />
+            <Controller
+              control={control}
+              name="industry"
+              render={({ field }) => (
+                <Select value={field.value || '__none__'} onValueChange={(v) => field.onChange(v === '__none__' ? '' : v)}>
+                  <SelectTrigger><SelectValue placeholder="Select industry…" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">—</SelectItem>
+                    {/* A legacy free-text value not in the curated list still shows up, so editing an
+                        older company doesn't silently blank out or overwrite its existing Industry. */}
+                    {field.value && !(INDUSTRY_OPTIONS as readonly string[]).includes(field.value) && (
+                      <SelectItem value={field.value}>{field.value}</SelectItem>
+                    )}
+                    {INDUSTRY_OPTIONS.map((i) => <SelectItem key={i} value={i}>{i}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              )}
+            />
           </div>
           <div className="space-y-1.5">
             <Label>Company Size</Label>
@@ -148,7 +167,22 @@ export function CompanyFormDialog({ company, open, onOpenChange }: { company?: C
           </div>
           <div className="space-y-1.5">
             <Label>Country</Label>
-            <Input {...register('country')} />
+            <Controller
+              control={control}
+              name="country"
+              render={({ field }) => (
+                <Select value={field.value || '__none__'} onValueChange={(v) => field.onChange(v === '__none__' ? '' : v)}>
+                  <SelectTrigger><SelectValue placeholder="Select country…" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">—</SelectItem>
+                    {field.value && !(COUNTRY_OPTIONS as readonly string[]).includes(field.value) && (
+                      <SelectItem value={field.value}>{field.value}</SelectItem>
+                    )}
+                    {COUNTRY_OPTIONS.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              )}
+            />
           </div>
           <div className="space-y-1.5">
             <Label>Postal Code</Label>

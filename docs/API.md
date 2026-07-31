@@ -61,6 +61,19 @@ entity-specific filters, and `sortBy`/`sortDir=asc|desc`.
 | PATCH | `/:id` | `companies:manage` | |
 | DELETE | `/:id` | `companies:manage` | Hard delete; linked leads/contacts keep their FK set to null. |
 
+`industry` and `country` are curated dropdowns in the UI (see
+`utils/leadFormOptions.ts` — Industry: ISV, Healthcare, BFSI, Retail, Energy
+& Utilities (E&U), Hospitality, Business Services, Marketing & Advertisement,
+Logistics & Supply Chain, Real Estate & Construction, Consumer Goods, Others.
+Country: USA, UK, Europe, Australia, Singapore, India, Others) but are
+validated as plain strings server-side, not a hard enum — this keeps
+pre-existing free-text company records (e.g. from spreadsheet imports done
+before this list existed) editable without being rejected on an unrelated
+field change. `state` and `website` are free text (`website` is loosely
+validated as a URL and normalized to include `https://` if no protocol was
+given). `annualRevenue` is a plain numeric field ("Revenue" in the Lead
+Creation form).
+
 ## Contacts — `/api/contacts`
 
 Same shape as Companies, gated by `contacts:manage`. `GET /:id` includes
@@ -70,11 +83,11 @@ Same shape as Companies, gated by `contacts:manage`. `GET /:id` includes
 
 | Method | Path | Permission | Notes |
 |---|---|---|---|
-| GET | `/` | `leads:view` | Filters: `search` (company/contact/email/phone/lead ID), `status`, `source`, `priority`, `campaignId`, `assignedToId`, `currentOwnerId`, `companyId`, `country`; `sortBy` any indexed column. |
-| POST | `/import` | `leads:create` | `multipart/form-data`, field name `file` — a `.csv` or `.xlsx` file. Creates Companies/Contacts/Campaigns/Leads/Meetings from each row (same logic the initial database seed uses to import the original spreadsheet — see `utils/spreadsheetImport.ts`). Expects a header row with at least "Name" and "Company" columns; also recognizes "IST Rep", "Designation", "Email ID"/"Email", "Phone", "City", "State", "Country", "Email/Cold Calling"/"Source", "Status", "Campaign", "Meeting Date", "Comments", "Category" (case-insensitive, a few common aliases accepted). Rows are matched against existing companies (by name) and contacts (by email, or by name+company when no email column) to avoid duplicates on re-import; a row whose company+contact pair already has an active lead is skipped rather than creating a duplicate lead. Returns `{ totalDataRows, created, skippedDuplicates, skippedInvalidRows, errors: [{ row, message }] }` — a single bad row does not fail the whole import. Invalidates the dashboard cache so KPIs reflect the import immediately. |
-| GET | `/:id` | `leads:view` | Full detail: company, contact, campaign, assignedTo, currentOwner, createdBy, `_count`, plus `meetings[]`, `tasks[]`, `documents[]`, `leadComments[]`, `activities[]`. |
-| POST | `/` | `leads:create` | Body can include an inline `contact: { firstName, lastName, ... }` — the service upserts/creates the company and contact rows transactionally. |
-| PATCH | `/:id` | `leads:edit_own` **or** `leads:edit_any` | Ownership check happens in the service: `edit_own` only succeeds if the caller is the lead's `assignedTo`, `currentOwner`, or `createdBy`. |
+| GET | `/` | `leads:view` | Filters: `search` (company/contact/email/phone/lead ID/email response/industry/website), `status`, `source`, `priority`, `campaignId`, `assignedToId`, `currentOwnerId`, `sdrId`, `companyId`, `country`, `industry`; `sortBy` any indexed column. |
+| POST | `/import` | `leads:create` | `multipart/form-data`, field name `file` — a `.csv` or `.xlsx` file. Creates Companies/Contacts/Campaigns/Leads/Meetings from each row (same logic the initial database seed uses to import the original spreadsheet — see `utils/spreadsheetImport.ts`). Expects a header row with at least "Name" and "Company" columns; also recognizes "IST Rep", "SDR"/"SDR Name", "Designation", "Email ID"/"Email", "Phone", "City", "State", "Country", "Industry", "Website"/"Website URL", "Revenue"/"Annual Revenue", "Email/Cold Calling"/"Source", "Status", "Campaign", "Meeting Date", "Lead Received Date"/"Received Date", "Email Response"/"Comments"/"Comment"/"Notes", "Category" (case-insensitive, a few common aliases accepted). Rows are matched against existing companies (by name) and contacts (by email, or by name+company when no email column) to avoid duplicates on re-import; a row whose company+contact pair already has an active lead is skipped rather than creating a duplicate lead. Returns `{ totalDataRows, created, skippedDuplicates, skippedInvalidRows, errors: [{ row, message }] }` — a single bad row does not fail the whole import. Invalidates the dashboard cache so KPIs reflect the import immediately. |
+| GET | `/:id` | `leads:view` | Full detail: company (incl. `industry`/`country`/`state`/`website`/`annualRevenue`), contact, campaign, assignedTo, currentOwner, sdr, createdBy, `_count`, plus `meetings[]`, `tasks[]`, `documents[]`, `leadComments[]`, `activities[]`. |
+| POST | `/` | `leads:create` | Body can include an inline `contact: { firstName, lastName, ... }` and/or `company: { industry, country, state, website, annualRevenue }` — the service upserts/creates the company and contact rows transactionally. `company` details are only applied when a brand-new company is created inline (matched-by-name existing companies are never overwritten by a new lead's form data). Also accepts `sdrId` (must be an active INSIDE_SALES user id), `leadReceivedDate` (defaults to today when omitted), and an optional `meetingScheduledDate` + `meetingScheduledTime` ("HH:MM") + `meetingTimeZone` — when `meetingScheduledDate` is present a Meeting row is created alongside the lead (same behavior as the CSV import's "Meeting Date" handling). |
+| PATCH | `/:id` | `leads:edit_own` **or** `leads:edit_any` | Ownership check happens in the service: `edit_own` only succeeds if the caller is the lead's `assignedTo`, `currentOwner`, or `createdBy`. Accepts the same body shape as POST (all fields optional) except `assignedToId`/`currentOwnerId`, which only change via `PATCH /:id/assign`; `sdrId` and `leadReceivedDate` are editable here. Meeting fields are create-only — reschedule via `PATCH /meetings/:id` instead. |
 | PATCH | `/:id/assign` | `leads:assign` | `{ assignedToId?, currentOwnerId?, note? }`. |
 | POST | `/bulk-assign` | `leads:assign` | `{ leadIds: string[], assignedToId?, currentOwnerId? }`. |
 | PATCH | `/:id/status` | `leads:edit_own` or `leads:edit_any` | `{ status, lossReason?, note? }` — a lead can be moved to any valid status at any time (no enforced pipeline order); the value is still validated against the fixed set of real lead statuses and rejected with 400 if it isn't one. |
@@ -82,6 +95,40 @@ Same shape as Companies, gated by `contacts:manage`. `GET /:id` includes
 
 Every mutation on a lead writes an `activities` row (visible in the Timeline
 tab) and an `audit_logs` row.
+
+**Lead Creation module fields** (added on top of the original field set):
+
+- **Campaign** — the dropdown now also offers Staffing, Pen Testing,
+  AI-Led Quality Engineering (AI-Led QE), AI-Led Digital Engineering
+  (AI-Led DE), and Generic, seeded as real `campaigns` rows (migration
+  `0003_seed_new_campaigns.sql`) alongside whatever campaigns already
+  existed — nothing pre-existing was removed or renamed.
+- **Revenue** — `company.annualRevenue`, a plain numeric field (reuses the
+  `companies.annual_revenue` column, which existed already but wasn't yet
+  exposed on this form).
+- **Industry** — `company.industry`, curated dropdown (see Companies
+  section above for the exact list and the enum-vs-string tradeoff).
+- **SDR Name** — `sdrId`, populated live from `GET /users/assignable?roles=INSIDE_SALES`
+  (the same mechanism the existing "Assign To" field already used) — never
+  a hardcoded list, always reflects current active Inside Sales users.
+  Distinct from `assignedToId`/`currentOwnerId`.
+- **Email Response** — renamed from `comments` (column, API field, exports,
+  search all renamed — this was a genuine rename via `ALTER TABLE ...
+  RENAME COLUMN`, migration `0002_rename_comments_to_email_response.sql`,
+  not just a relabel, so no data was lost).
+- **Lead Received Date** — `leadReceivedDate`, defaults to today at creation,
+  editable afterward by anyone with edit rights on the lead.
+- **Meeting Schedule** — `meetingScheduledDate` / `meetingScheduledTime` /
+  `meetingTimeZone`, create-lead-time-only convenience that inserts a
+  `meetings` row; `meetings.timeZone` is a new free-text column (one of
+  EST/CST/MST/PST or a manually-typed value for non-US leads).
+- **Country** — `company.country`, curated dropdown (USA, UK, Europe,
+  Australia, Singapore, India, Others). Also drives the frontend's
+  Meeting Time Zone business logic: USA shows the EST/CST/MST/PST picker,
+  anything else switches to a free-text timezone field.
+- **State** — `company.state`, free text (column already existed).
+- **Website** — `company.website`, free text with loose URL validation
+  and `https://` auto-prefixing (column already existed).
 
 ## Campaigns — `/api/campaigns`
 

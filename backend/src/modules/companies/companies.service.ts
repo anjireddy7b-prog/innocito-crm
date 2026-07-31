@@ -6,6 +6,7 @@ import { ApiError } from '@/utils/ApiError';
 import { recordAudit } from '@/utils/auditLogger';
 import { paginationMeta, toLimitOffset } from '@/utils/pagination';
 import { cache } from '@/config/redis';
+import { normalizeWebsite } from '@/utils/leadFormOptions';
 
 export async function listCompanies(query: {
   page: number;
@@ -72,7 +73,7 @@ export async function getCompanyById(id: string) {
 export async function createCompany(req: Request, input: any) {
   const [company] = await db
     .insert(companies)
-    .values({ ...input, annualRevenue: input.annualRevenue?.toString(), createdById: req.user!.sub })
+    .values({ ...input, website: normalizeWebsite(input.website), annualRevenue: input.annualRevenue?.toString(), createdById: req.user!.sub })
     .returning();
   await recordAudit({ req, action: 'CREATE', entityType: 'Company', entityId: company.id, newValues: company });
   await cache.del('dashboard:*');
@@ -84,7 +85,12 @@ export async function updateCompany(req: Request, id: string, input: any) {
   if (!before) throw ApiError.notFound('Company not found');
   const [company] = await db
     .update(companies)
-    .set({ ...input, annualRevenue: input.annualRevenue?.toString(), updatedAt: new Date() })
+    .set({
+      ...input,
+      ...(input.website !== undefined ? { website: normalizeWebsite(input.website) } : {}),
+      annualRevenue: input.annualRevenue?.toString(),
+      updatedAt: new Date(),
+    })
     .where(eq(companies.id, id))
     .returning();
   await recordAudit({ req, action: 'UPDATE', entityType: 'Company', entityId: id, oldValues: before, newValues: company });

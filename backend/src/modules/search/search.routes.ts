@@ -46,13 +46,14 @@ searchRouter.get(
               ilike(contacts.firstName, term),
               ilike(contacts.lastName, term),
               ilike(contacts.email, term),
-              ilike(contacts.phone, term)
+              ilike(contacts.phone, term),
+              ilike(leads.emailResponse, term)
             )!
           )
         )
         .limit(8),
       db.query.companies.findMany({
-        where: or(ilike(companies.name, term), ilike(companies.domain, term), ilike(companies.country, term)),
+        where: or(ilike(companies.name, term), ilike(companies.domain, term), ilike(companies.country, term), ilike(companies.industry, term), ilike(companies.website, term)),
         limit: 6,
       }),
       db.query.contacts.findMany({

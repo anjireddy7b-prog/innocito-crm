@@ -165,7 +165,7 @@ async function seedLeadsFromSpreadsheet(adminId: string, repIdByName: Map<string
     source: colIndex('Email/Cold Calling'),
     campaign: colIndex('Campaign'),
     meetingDate: colIndex('Meeting Date'),
-    comments: colIndex('Comments'),
+    emailResponse: colIndex('Comments'),
     category: colIndex('Category'),
   };
 
@@ -245,7 +245,7 @@ async function seedLeadsFromSpreadsheet(adminId: string, repIdByName: Map<string
     const sourceRaw = String(get(idx.source) ?? '').toLowerCase();
     const source = sourceRaw.includes('linkedin') ? 'LINKEDIN' : sourceRaw.includes('email') ? 'EMAIL' : 'OTHER';
 
-    const comment = get(idx.comments) ? String(get(idx.comments)) : '';
+    const comment = get(idx.emailResponse) ? String(get(idx.emailResponse)) : '';
     const { leadStatus, meetingStatus, meetingType } = classifyOutcome(comment);
     const meetingDate = parseFlexibleDate(get(idx.meetingDate));
 
@@ -258,7 +258,7 @@ async function seedLeadsFromSpreadsheet(adminId: string, repIdByName: Map<string
         source: source as any,
         status: leadStatus as any,
         category: get(idx.category) ? String(get(idx.category)) : null,
-        comments: comment || null,
+        emailResponse: comment || null,
         assignedToId: repId,
         currentOwnerId: repId,
         createdById: repId,

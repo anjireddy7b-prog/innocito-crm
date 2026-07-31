@@ -10,13 +10,26 @@ import { paginationMeta, toSkipTake } from '@/utils/pagination';
 import { formatLeadNumber, parseLeadNumber } from '@/utils/leadNumber';
 import { cache } from '@/config/redis';
 import { PERMISSIONS } from '@/utils/permissions';
+import { normalizeWebsite } from '@/utils/leadFormOptions';
+
+/**
+ * Combines a calendar date with an "HH:MM" time-of-day into one Date, the same "naive wall-clock,
+ * no real timezone math" convention the rest of the app already uses for meeting/lead dates (see
+ * utils/spreadsheetImport.ts's parseFlexibleDate). The selected timezone is stored alongside on the
+ * meeting record for display/reference, not used to convert this into a true UTC instant.
+ */
+function combineDateAndTime(date: Date, time?: string | null): Date {
+  const [hh, mm] = (time ?? '00:00').split(':').map(Number);
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), hh || 0, mm || 0));
+}
 
 const leadWith = {
-  company: { columns: { id: true, name: true, domain: true, industry: true, country: true } },
+  company: { columns: { id: true, name: true, domain: true, industry: true, country: true, state: true, website: true, annualRevenue: true } },
   contact: { columns: { id: true, firstName: true, lastName: true, email: true, phone: true, designation: true } },
   campaign: { columns: { id: true, name: true, code: true } },
   assignedTo: { columns: { id: true, firstName: true, lastName: true, email: true } },
   currentOwner: { columns: { id: true, firstName: true, lastName: true, email: true } },
+  sdr: { columns: { id: true, firstName: true, lastName: true, email: true } },
   createdBy: { columns: { id: true, firstName: true, lastName: true } },
 } as const;
 
@@ -52,8 +65,10 @@ export async function listLeads(query: {
   campaignId?: string;
   assignedToId?: string;
   currentOwnerId?: string;
+  sdrId?: string;
   companyId?: string;
   country?: string;
+  industry?: string;
   dateFrom?: Date;
   dateTo?: Date;
   sortBy?: string;
@@ -69,11 +84,14 @@ export async function listLeads(query: {
         ...(asNumber !== null ? [eq(leads.leadNumber, asNumber)] : []),
         ilike(companies.name, term),
         ilike(companies.domain, term),
+        ilike(companies.industry, term),
+        ilike(companies.website, term),
         ilike(contacts.firstName, term),
         ilike(contacts.lastName, term),
         ilike(contacts.email, term),
         ilike(contacts.phone, term),
-        ilike(campaigns.name, term)
+        ilike(campaigns.name, term),
+        ilike(leads.emailResponse, term)
       )!
     );
   }
@@ -83,8 +101,10 @@ export async function listLeads(query: {
   if (query.campaignId) conditions.push(eq(leads.campaignId, query.campaignId));
   if (query.assignedToId) conditions.push(eq(leads.assignedToId, query.assignedToId));
   if (query.currentOwnerId) conditions.push(eq(leads.currentOwnerId, query.currentOwnerId));
+  if (query.sdrId) conditions.push(eq(leads.sdrId, query.sdrId));
   if (query.companyId) conditions.push(eq(leads.companyId, query.companyId));
   if (query.country) conditions.push(eq(companies.country, query.country));
+  if (query.industry) conditions.push(eq(companies.industry, query.industry));
 
   const where = and(...conditions);
 
@@ -154,9 +174,24 @@ async function resolveCompanyAndContact(req: Request, input: any) {
   if (!companyId && input.companyName) {
     const existing = await db.query.companies.findFirst({ where: ilike(companies.name, input.companyName) });
     if (existing) {
+      // Existing company: never overwrite its Industry/Country/State/Website/Revenue from this
+      // lead's inline `company` details — those belong to the company record and are shared
+      // across every lead for it, so a second lead for a known company must not silently mutate it.
       companyId = existing.id;
     } else {
-      const [created] = await db.insert(companies).values({ name: input.companyName, createdById: req.user!.sub }).returning();
+      const details = input.company ?? {};
+      const [created] = await db
+        .insert(companies)
+        .values({
+          name: input.companyName,
+          industry: details.industry ?? null,
+          country: details.country ?? null,
+          state: details.state ?? null,
+          website: normalizeWebsite(details.website) ?? null,
+          annualRevenue: details.annualRevenue?.toString(),
+          createdById: req.user!.sub,
+        })
+        .returning();
       companyId = created.id;
     }
   }
@@ -193,13 +228,36 @@ export async function createLead(req: Request, input: any) {
       tags: input.tags ?? [],
       assignedToId: input.assignedToId,
       currentOwnerId: input.currentOwnerId,
+      sdrId: input.sdrId,
+      leadReceivedDate: input.leadReceivedDate ?? undefined, // defaults to now() at the DB layer when omitted
       meetingDetails: input.meetingDetails,
-      comments: input.comments,
+      emailResponse: input.emailResponse,
       mom: input.mom,
       nextSteps: input.nextSteps,
       createdById: req.user!.sub,
     })
     .returning();
+
+  // Optional meeting captured directly on the Lead Creation form — mirrors the meeting-creation
+  // behavior the CSV import already has (see leads.import.service.ts) so both entry paths agree.
+  if (input.meetingScheduledDate) {
+    const scheduledAt = combineDateAndTime(new Date(input.meetingScheduledDate), input.meetingScheduledTime);
+    await db.insert(meetings).values({
+      leadId: created.id,
+      title: 'Initial Meeting',
+      type: 'DISCOVERY',
+      status: 'SCHEDULED',
+      scheduledAt,
+      timeZone: input.meetingTimeZone || null,
+      createdById: req.user!.sub,
+    });
+    await recordActivity({
+      type: 'MEETING_SCHEDULED',
+      description: `Meeting scheduled for ${formatLeadNumber(created.leadNumber)}`,
+      leadId: created.id,
+      userId: req.user!.sub,
+    });
+  }
 
   const lead = await getLeadById(created.id);
 
@@ -215,6 +273,15 @@ export async function createLead(req: Request, input: any) {
       type: 'LEAD_ASSIGNED',
       title: 'New lead assigned',
       message: `You were assigned lead ${formatLeadNumber(created.leadNumber)}${lead.company ? ` for ${(lead as any).company.name}` : ''}.`,
+      leadId: created.id,
+    });
+  }
+  if (created.sdrId && created.sdrId !== created.assignedToId) {
+    await notifyUser({
+      userId: created.sdrId,
+      type: 'LEAD_ASSIGNED',
+      title: 'You were set as SDR on a new lead',
+      message: `You were set as SDR for lead ${formatLeadNumber(created.leadNumber)}${lead.company ? ` for ${(lead as any).company.name}` : ''}.`,
       leadId: created.id,
     });
   }
@@ -250,8 +317,13 @@ export async function updateLead(req: Request, id: string, input: any) {
       actualCloseDate: input.actualCloseDate,
       lossReason: input.lossReason,
       tags: input.tags,
+      // Note: assignedToId/currentOwnerId are intentionally NOT settable here — they go through
+      // assignLead() below, which fires its own notification/audit trail. sdrId has no equivalent
+      // dedicated endpoint (yet), so it's safe to fold into the general update.
+      ...(input.sdrId !== undefined ? { sdrId: input.sdrId } : {}),
+      ...(input.leadReceivedDate !== undefined ? { leadReceivedDate: input.leadReceivedDate } : {}),
       meetingDetails: input.meetingDetails,
-      comments: input.comments,
+      emailResponse: input.emailResponse,
       mom: input.mom,
       nextSteps: input.nextSteps,
       updatedAt: new Date(),

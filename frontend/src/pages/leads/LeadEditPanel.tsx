@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { UserPicker } from '@/components/shared/UserPicker';
 import { useUpdateLead } from '@/api/leads';
 import { useCampaigns } from '@/api/campaigns';
 import { apiErrorMessage } from '@/lib/api';
@@ -24,10 +25,12 @@ const schema = z.object({
   probability: z.string().optional(),
   expectedCloseDate: z.string().optional(),
   campaignId: z.string().optional(),
+  sdrId: z.string().nullable().optional(),
+  leadReceivedDate: z.string().optional(),
   meetingDetails: z.string().optional(),
   nextSteps: z.string().optional(),
   mom: z.string().optional(),
-  comments: z.string().optional(),
+  emailResponse: z.string().optional(),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -51,10 +54,12 @@ export function LeadEditPanel({ lead, open, onOpenChange }: { lead: Lead; open: 
       probability: lead.probability != null ? String(lead.probability) : '',
       expectedCloseDate: toDateInputValue(lead.expectedCloseDate),
       campaignId: lead.campaignId ?? undefined,
+      sdrId: lead.sdrId ?? undefined,
+      leadReceivedDate: toDateInputValue(lead.leadReceivedDate),
       meetingDetails: lead.meetingDetails ?? '',
       nextSteps: lead.nextSteps ?? '',
       mom: lead.mom ?? '',
-      comments: lead.comments ?? '',
+      emailResponse: lead.emailResponse ?? '',
     },
   });
 
@@ -69,10 +74,12 @@ export function LeadEditPanel({ lead, open, onOpenChange }: { lead: Lead; open: 
         probability: lead.probability != null ? String(lead.probability) : '',
         expectedCloseDate: toDateInputValue(lead.expectedCloseDate),
         campaignId: lead.campaignId ?? undefined,
+        sdrId: lead.sdrId ?? undefined,
+        leadReceivedDate: toDateInputValue(lead.leadReceivedDate),
         meetingDetails: lead.meetingDetails ?? '',
         nextSteps: lead.nextSteps ?? '',
         mom: lead.mom ?? '',
-        comments: lead.comments ?? '',
+        emailResponse: lead.emailResponse ?? '',
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -89,10 +96,12 @@ export function LeadEditPanel({ lead, open, onOpenChange }: { lead: Lead; open: 
         probability: values.probability ? Number(values.probability) : undefined,
         expectedCloseDate: values.expectedCloseDate ? new Date(values.expectedCloseDate).toISOString() : undefined,
         campaignId: values.campaignId || undefined,
+        sdrId: values.sdrId || undefined,
+        leadReceivedDate: values.leadReceivedDate || undefined,
         meetingDetails: values.meetingDetails || undefined,
         nextSteps: values.nextSteps || undefined,
         mom: values.mom || undefined,
-        comments: values.comments || undefined,
+        emailResponse: values.emailResponse || undefined,
       });
       toast.success('Lead updated');
       onOpenChange(false);
@@ -186,6 +195,21 @@ export function LeadEditPanel({ lead, open, onOpenChange }: { lead: Lead; open: 
             <Input type="date" {...register('expectedCloseDate')} />
           </div>
 
+          <div className="space-y-1.5">
+            <Label>SDR Name</Label>
+            <Controller
+              control={control}
+              name="sdrId"
+              render={({ field }) => (
+                <UserPicker value={field.value} onChange={field.onChange} roles={['INSIDE_SALES']} placeholder="Select SDR…" />
+              )}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Lead Received Date</Label>
+            <Input type="date" {...register('leadReceivedDate')} />
+          </div>
+
           <div className="space-y-1.5 sm:col-span-2">
             <Label>Meeting Details</Label>
             <Textarea rows={2} {...register('meetingDetails')} placeholder="Latest meeting summary…" />
@@ -199,8 +223,8 @@ export function LeadEditPanel({ lead, open, onOpenChange }: { lead: Lead; open: 
             <Textarea rows={2} {...register('nextSteps')} placeholder="What happens next…" />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
-            <Label>Comments</Label>
-            <Textarea rows={2} {...register('comments')} placeholder="Additional notes…" />
+            <Label>Email Response</Label>
+            <Textarea rows={2} {...register('emailResponse')} placeholder="Additional notes…" />
           </div>
 
           <DialogFooter className="sm:col-span-2">

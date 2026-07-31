@@ -10,12 +10,14 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useLeads } from '@/api/leads';
+import { useAssignableUsers } from '@/api/users';
 import { useAuthStore } from '@/store/authStore';
 import { PERMISSIONS } from '@/lib/permissions';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { downloadFile } from '@/lib/download';
 import { apiErrorMessage } from '@/lib/api';
 import { LEAD_STATUSES, LEAD_SOURCES, LEAD_PRIORITIES, type Lead } from '@/types';
+import { INDUSTRY_OPTIONS, COUNTRY_OPTIONS } from '@/lib/leadFormOptions';
 import { LeadFormDialog } from '@/pages/leads/LeadFormDialog';
 import { LeadImportDialog } from '@/pages/leads/LeadImportDialog';
 
@@ -52,6 +54,9 @@ export default function LeadsListPage() {
       source: params.get('source') || undefined,
       priority: params.get('priority') || undefined,
       assignedToId: params.get('assignedToId') || undefined,
+      sdrId: params.get('sdrId') || undefined,
+      industry: params.get('industry') || undefined,
+      country: params.get('country') || undefined,
       sortBy,
       sortDir,
     }),
@@ -59,6 +64,7 @@ export default function LeadsListPage() {
   );
 
   const { data, isLoading } = useLeads(query);
+  const { data: sdrUsers } = useAssignableUsers(['INSIDE_SALES']);
 
   function updateParam(key: string, value: string | null) {
     const next = new URLSearchParams(params);
@@ -88,6 +94,11 @@ export default function LeadsListPage() {
       key: 'assignedTo',
       header: 'Assigned Rep',
       cell: (l) => (l.assignedTo ? `${l.assignedTo.firstName} ${l.assignedTo.lastName}` : <span className="text-muted-foreground">Unassigned</span>),
+    },
+    {
+      key: 'sdr',
+      header: 'SDR Name',
+      cell: (l) => (l.sdr ? `${l.sdr.firstName} ${l.sdr.lastName}` : <span className="text-muted-foreground">—</span>),
     },
     { key: 'dealValue', header: 'Deal Value', sortable: true, cell: (l) => formatCurrency(l.dealValue, l.currency) },
     { key: 'createdAt', header: 'Created', sortable: true, cell: (l) => formatDate(l.createdAt) },
@@ -155,6 +166,36 @@ export default function LeadsListPage() {
             <SelectItem value="__all__">All priorities</SelectItem>
             {LEAD_PRIORITIES.map((s) => (
               <SelectItem key={s} value={s}>{s}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={params.get('industry') ?? '__all__'} onValueChange={(v) => updateParam('industry', v === '__all__' ? null : v)}>
+          <SelectTrigger className="w-44"><SelectValue placeholder="Industry" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">All industries</SelectItem>
+            {INDUSTRY_OPTIONS.map((s) => (
+              <SelectItem key={s} value={s}>{s}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={params.get('country') ?? '__all__'} onValueChange={(v) => updateParam('country', v === '__all__' ? null : v)}>
+          <SelectTrigger className="w-36"><SelectValue placeholder="Country" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">All countries</SelectItem>
+            {COUNTRY_OPTIONS.map((s) => (
+              <SelectItem key={s} value={s}>{s}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={params.get('sdrId') ?? '__all__'} onValueChange={(v) => updateParam('sdrId', v === '__all__' ? null : v)}>
+          <SelectTrigger className="w-44"><SelectValue placeholder="SDR" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">All SDRs</SelectItem>
+            {sdrUsers?.map((u) => (
+              <SelectItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</SelectItem>
             ))}
           </SelectContent>
         </Select>

@@ -7,10 +7,12 @@ import { Pagination } from '@/components/shared/Pagination';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCompanies } from '@/api/companies';
 import { useAuthStore } from '@/store/authStore';
 import { PERMISSIONS } from '@/lib/permissions';
 import type { Company } from '@/types';
+import { INDUSTRY_OPTIONS, COUNTRY_OPTIONS } from '@/lib/leadFormOptions';
 import { CompanyFormDialog } from '@/pages/companies/CompanyFormDialog';
 
 export default function CompaniesListPage() {
@@ -22,7 +24,13 @@ export default function CompaniesListPage() {
 
   const page = Number(params.get('page') ?? 1);
   const query = useMemo(
-    () => ({ page, pageSize: 20, search: params.get('search') || undefined }),
+    () => ({
+      page,
+      pageSize: 20,
+      search: params.get('search') || undefined,
+      industry: params.get('industry') || undefined,
+      country: params.get('country') || undefined,
+    }),
     [page, params]
   );
   const { data, isLoading } = useCompanies(query);
@@ -72,16 +80,38 @@ export default function CompaniesListPage() {
         }
       />
 
-      <form
-        className="relative w-full max-w-xs"
-        onSubmit={(e) => {
-          e.preventDefault();
-          updateParam('search', search || null);
-        }}
-      >
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input placeholder="Search companies…" className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
-      </form>
+      <div className="flex flex-wrap items-center gap-2">
+        <form
+          className="relative w-full max-w-xs"
+          onSubmit={(e) => {
+            e.preventDefault();
+            updateParam('search', search || null);
+          }}
+        >
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input placeholder="Search companies…" className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+        </form>
+
+        <Select value={params.get('industry') ?? '__all__'} onValueChange={(v) => updateParam('industry', v === '__all__' ? null : v)}>
+          <SelectTrigger className="w-44"><SelectValue placeholder="Industry" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">All industries</SelectItem>
+            {INDUSTRY_OPTIONS.map((s) => (
+              <SelectItem key={s} value={s}>{s}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={params.get('country') ?? '__all__'} onValueChange={(v) => updateParam('country', v === '__all__' ? null : v)}>
+          <SelectTrigger className="w-36"><SelectValue placeholder="Country" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">All countries</SelectItem>
+            {COUNTRY_OPTIONS.map((s) => (
+              <SelectItem key={s} value={s}>{s}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
       <DataTable
         columns={columns}

@@ -2,8 +2,9 @@ import { beforeAll, afterAll } from 'vitest';
 import argon2 from 'argon2';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { db, pool } from '@/config/db';
-import { roles, permissions, rolePermissions, users } from '@/db/schema';
+import { roles, permissions, rolePermissions, users, campaigns } from '@/db/schema';
 import { ALL_PERMISSIONS, ROLE_PERMISSIONS } from '@/utils/permissions';
+import { NEW_CAMPAIGN_SEEDS } from '@/utils/leadFormOptions';
 import { eq } from 'drizzle-orm';
 
 export const TEST_ADMIN = { email: 'admin@innocito.com', password: 'ChangeMe!123' };
@@ -60,6 +61,10 @@ async function seedMinimal() {
     mustChangePassword: false,
     isActive: true,
   });
+
+  // Mirrors migration 0003_seed_new_campaigns.sql — the TRUNCATE below wipes out whatever the
+  // migration inserted, so the fixtures re-seed the same rows for tests that rely on them.
+  await db.insert(campaigns).values(NEW_CAMPAIGN_SEEDS.map((c) => ({ ...c, status: 'ACTIVE' as const })));
 }
 
 beforeAll(async () => {
