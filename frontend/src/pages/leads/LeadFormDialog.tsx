@@ -9,20 +9,23 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { UserPicker } from '@/components/shared/UserPicker';
-import { MeetingTimeZoneField } from '@/components/shared/MeetingTimeZoneField';
+import { WebsiteField } from '@/components/shared/WebsiteField';
+import { CompanyDetailsFields } from '@/components/shared/CompanyDetailsFields';
+import { MeetingScheduleFields } from '@/components/shared/MeetingScheduleFields';
+import { SdrAndReceivedDateFields } from '@/components/shared/SdrAndReceivedDateFields';
 import { useCreateLead } from '@/api/leads';
 import { useCampaigns } from '@/api/campaigns';
 import { apiErrorMessage } from '@/lib/api';
 import { LEAD_SOURCES, LEAD_PRIORITIES } from '@/types';
-import { INDUSTRY_OPTIONS, COUNTRY_OPTIONS } from '@/lib/leadFormOptions';
+import { companyDetailsSchema, meetingScheduleSchema, isValidMeetingTime, todayDateInputValue } from '@/lib/leadFormOptions';
 import { useNavigate } from 'react-router-dom';
 
-const TIME_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
-
-function todayDateInputValue(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
+// Field order below intentionally matches LeadEditPanel.tsx's Edit Lead form field-for-field
+// (Company Name → Website → …→ Company details → Meeting schedule → Email Response), per the
+// "New Lead and Edit Lead should be visually/functionally identical" requirement. The Company
+// details and Meeting schedule blocks, plus the SDR/Lead Received Date pair, are shared
+// components/schema fragments (see components/shared/*.tsx and lib/leadFormOptions.ts) reused
+// as-is by both forms so the two can't drift apart as fields are added later.
 const schema = z
   .object({
     companyName: z.string().min(1, 'Company name is required'),
@@ -38,25 +41,12 @@ const schema = z
     dealValue: z.string().optional(),
     category: z.string().optional(),
     emailResponse: z.string().optional(),
-
-    // Company detail fields — only applied when the company is newly created (see leads.service.ts).
-    industry: z.string().optional(),
-    country: z.string().optional(),
-    state: z.string().optional(),
-    website: z.string().optional(),
-    revenue: z.string().optional(),
-
     sdrId: z.string().nullable().optional(),
     leadReceivedDate: z.string().min(1, 'Lead Received Date is required'),
-
-    meetingScheduledDate: z.string().optional(),
-    meetingScheduledTime: z.string().optional(),
-    meetingTimeZone: z.string().optional(),
   })
-  .refine((v) => !v.meetingScheduledTime || TIME_REGEX.test(v.meetingScheduledTime), {
-    message: 'Enter a valid time (HH:MM)',
-    path: ['meetingScheduledTime'],
-  });
+  .merge(companyDetailsSchema)
+  .merge(meetingScheduleSchema)
+  .refine(isValidMeetingTime, { message: 'Enter a valid time (HH:MM)', path: ['meetingScheduledTime'] });
 type FormValues = z.infer<typeof schema>;
 
 export function LeadFormDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -134,6 +124,9 @@ export function LeadFormDialog({ open, onOpenChange }: { open: boolean; onOpenCh
             <Input {...register('companyName')} placeholder="Acme Corporation" />
             {errors.companyName && <p className="text-xs text-destructive">{errors.companyName.message}</p>}
           </div>
+
+          <WebsiteField register={register} errors={errors} />
+
           <div className="space-y-1.5">
             <Label>Contact First Name *</Label>
             <Input {...register('firstName')} placeholder="Jane" />
@@ -220,21 +213,7 @@ export function LeadFormDialog({ open, onOpenChange }: { open: boolean; onOpenCh
             />
           </div>
 
-          <div className="space-y-1.5">
-            <Label>SDR Name</Label>
-            <Controller
-              control={control}
-              name="sdrId"
-              render={({ field }) => (
-                <UserPicker value={field.value} onChange={field.onChange} roles={['INSIDE_SALES']} placeholder="Select SDR…" />
-              )}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Lead Received Date *</Label>
-            <Input type="date" {...register('leadReceivedDate')} />
-            {errors.leadReceivedDate && <p className="text-xs text-destructive">{errors.leadReceivedDate.message}</p>}
-          </div>
+          <SdrAndReceivedDateFields control={control} register={register} errors={errors} required />
 
           <div className="space-y-1.5">
             <Label>Estimated Deal Value (USD)</Label>
@@ -245,81 +224,14 @@ export function LeadFormDialog({ open, onOpenChange }: { open: boolean; onOpenCh
             <Input {...register('category')} placeholder="Enterprise / SMB / …" />
           </div>
 
-          <div className="sm:col-span-2 rounded-md border border-border p-3 space-y-4">
-            <p className="text-sm font-medium text-muted-foreground">Company details (used only when this is a new company)</p>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label>Industry</Label>
-                <Controller
-                  control={control}
-                  name="industry"
-                  render={({ field }) => (
-                    <Select value={field.value ?? '__none__'} onValueChange={(v) => field.onChange(v === '__none__' ? undefined : v)}>
-                      <SelectTrigger><SelectValue placeholder="Select industry…" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none__">—</SelectItem>
-                        {INDUSTRY_OPTIONS.map((i) => <SelectItem key={i} value={i}>{i}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Revenue</Label>
-                <Input type="number" min={0} {...register('revenue')} placeholder="5000000" />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Country</Label>
-                <Controller
-                  control={control}
-                  name="country"
-                  render={({ field }) => (
-                    <Select value={field.value ?? '__none__'} onValueChange={(v) => field.onChange(v === '__none__' ? undefined : v)}>
-                      <SelectTrigger><SelectValue placeholder="Select country…" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none__">—</SelectItem>
-                        {COUNTRY_OPTIONS.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>State</Label>
-                <Input {...register('state')} placeholder="Texas" />
-              </div>
-              <div className="space-y-1.5 sm:col-span-2">
-                <Label>Website</Label>
-                <Input {...register('website')} placeholder="acme.com" />
-                {errors.website && <p className="text-xs text-destructive">{errors.website.message as string}</p>}
-              </div>
-            </div>
-          </div>
+          <CompanyDetailsFields
+            control={control}
+            register={register}
+            errors={errors}
+            title="Company details (used only when this is a new company)"
+          />
 
-          <div className="sm:col-span-2 rounded-md border border-border p-3 space-y-4">
-            <p className="text-sm font-medium text-muted-foreground">Meeting schedule (optional — creates a meeting on this lead)</p>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <div className="space-y-1.5">
-                <Label>Meeting Scheduled Date</Label>
-                <Input type="date" {...register('meetingScheduledDate')} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Meeting Scheduled Time</Label>
-                <Input type="time" {...register('meetingScheduledTime')} />
-                {errors.meetingScheduledTime && <p className="text-xs text-destructive">{errors.meetingScheduledTime.message}</p>}
-              </div>
-              <div className="space-y-1.5">
-                <Label>Meeting Time Zone</Label>
-                <Controller
-                  control={control}
-                  name="meetingTimeZone"
-                  render={({ field }) => (
-                    <MeetingTimeZoneField country={watchedCountry} value={field.value ?? ''} onChange={field.onChange} />
-                  )}
-                />
-              </div>
-            </div>
-          </div>
+          <MeetingScheduleFields control={control} register={register} errors={errors} country={watchedCountry} />
 
           <div className="space-y-1.5 sm:col-span-2">
             <Label>Email Response</Label>

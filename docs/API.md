@@ -87,7 +87,7 @@ Same shape as Companies, gated by `contacts:manage`. `GET /:id` includes
 | POST | `/import` | `leads:create` | `multipart/form-data`, field name `file` — a `.csv` or `.xlsx` file. Creates Companies/Contacts/Campaigns/Leads/Meetings from each row (same logic the initial database seed uses to import the original spreadsheet — see `utils/spreadsheetImport.ts`). Expects a header row with at least "Name" and "Company" columns; also recognizes "IST Rep", "SDR"/"SDR Name", "Designation", "Email ID"/"Email", "Phone", "City", "State", "Country", "Industry", "Website"/"Website URL", "Revenue"/"Annual Revenue", "Email/Cold Calling"/"Source", "Status", "Campaign", "Meeting Date", "Lead Received Date"/"Received Date", "Email Response"/"Comments"/"Comment"/"Notes", "Category" (case-insensitive, a few common aliases accepted). Rows are matched against existing companies (by name) and contacts (by email, or by name+company when no email column) to avoid duplicates on re-import; a row whose company+contact pair already has an active lead is skipped rather than creating a duplicate lead. Returns `{ totalDataRows, created, skippedDuplicates, skippedInvalidRows, errors: [{ row, message }] }` — a single bad row does not fail the whole import. Invalidates the dashboard cache so KPIs reflect the import immediately. |
 | GET | `/:id` | `leads:view` | Full detail: company (incl. `industry`/`country`/`state`/`website`/`annualRevenue`), contact, campaign, assignedTo, currentOwner, sdr, createdBy, `_count`, plus `meetings[]`, `tasks[]`, `documents[]`, `leadComments[]`, `activities[]`. |
 | POST | `/` | `leads:create` | Body can include an inline `contact: { firstName, lastName, ... }` and/or `company: { industry, country, state, website, annualRevenue }` — the service upserts/creates the company and contact rows transactionally. `company` details are only applied when a brand-new company is created inline (matched-by-name existing companies are never overwritten by a new lead's form data). Also accepts `sdrId` (must be an active INSIDE_SALES user id), `leadReceivedDate` (defaults to today when omitted), and an optional `meetingScheduledDate` + `meetingScheduledTime` ("HH:MM") + `meetingTimeZone` — when `meetingScheduledDate` is present a Meeting row is created alongside the lead (same behavior as the CSV import's "Meeting Date" handling). |
-| PATCH | `/:id` | `leads:edit_own` **or** `leads:edit_any` | Ownership check happens in the service: `edit_own` only succeeds if the caller is the lead's `assignedTo`, `currentOwner`, or `createdBy`. Accepts the same body shape as POST (all fields optional) except `assignedToId`/`currentOwnerId`, which only change via `PATCH /:id/assign`; `sdrId` and `leadReceivedDate` are editable here. Meeting fields are create-only — reschedule via `PATCH /meetings/:id` instead. |
+| PATCH | `/:id` | `leads:edit_own` **or** `leads:edit_any` | Ownership check happens in the service: `edit_own` only succeeds if the caller is the lead's `assignedTo`, `currentOwner`, or `createdBy`. Accepts the same body shape as POST (all fields optional) except `assignedToId`/`currentOwnerId`, which only change via `PATCH /:id/assign`; `sdrId` and `leadReceivedDate` are editable here. Unlike POST, an included `company: { industry, country, state, website, annualRevenue }` updates the lead's *already-linked* company directly (not just brand-new companies) — the Edit Lead form pre-fills these from the company's real current values, so this is an intentional edit, not a creation-time guess. `meetingScheduledDate`/`meetingScheduledTime`/`meetingTimeZone` reschedule the lead's "Initial Meeting" (creating it if the lead doesn't have one yet); other meetings added via `POST /meetings` are untouched — use `PATCH /meetings/:id` for those. |
 | PATCH | `/:id/assign` | `leads:assign` | `{ assignedToId?, currentOwnerId?, note? }`. |
 | POST | `/bulk-assign` | `leads:assign` | `{ leadIds: string[], assignedToId?, currentOwnerId? }`. |
 | PATCH | `/:id/status` | `leads:edit_own` or `leads:edit_any` | `{ status, lossReason?, note? }` — a lead can be moved to any valid status at any time (no enforced pipeline order); the value is still validated against the fixed set of real lead statuses and rejected with 400 if it isn't one. |
@@ -119,9 +119,11 @@ tab) and an `audit_logs` row.
 - **Lead Received Date** — `leadReceivedDate`, defaults to today at creation,
   editable afterward by anyone with edit rights on the lead.
 - **Meeting Schedule** — `meetingScheduledDate` / `meetingScheduledTime` /
-  `meetingTimeZone`, create-lead-time-only convenience that inserts a
-  `meetings` row; `meetings.timeZone` is a new free-text column (one of
-  EST/CST/MST/PST or a manually-typed value for non-US leads).
+  `meetingTimeZone`. On `POST /leads` this inserts a `meetings` row titled
+  "Initial Meeting"; on `PATCH /leads/:id` it reschedules that same meeting
+  (creating it if the lead has none yet) — the New Lead and Edit Lead forms
+  present and validate this identically. `meetings.timeZone` is a free-text
+  column (one of EST/CST/MST/PST or a manually-typed value for non-US leads).
 - **Country** — `company.country`, curated dropdown (USA, UK, Europe,
   Australia, Singapore, India, Others). Also drives the frontend's
   Meeting Time Zone business logic: USA shows the EST/CST/MST/PST picker,
@@ -129,6 +131,19 @@ tab) and an `audit_logs` row.
 - **State** — `company.state`, free text (column already existed).
 - **Website** — `company.website`, free text with loose URL validation
   and `https://` auto-prefixing (column already existed).
+
+**Edit Lead form parity with New Lead:** the Edit Lead form (`LeadEditPanel.tsx`)
+carries every field above — Revenue, Industry, SDR Name, Lead Received Date,
+Meeting Schedule, Country, State, Website, Email Response, the expanded
+Campaign list — pre-populated with the lead's current data, using the same
+shared field components, Zod schema fragments, and layout as the New Lead
+form (`components/shared/CompanyDetailsFields.tsx`,
+`MeetingScheduleFields.tsx`, `WebsiteField.tsx`, `SdrAndReceivedDateFields.tsx`,
+and `lib/leadFormOptions.ts`). The one deliberate behavioral difference: on
+Edit, the Company details block updates the lead's already-linked company
+record directly (see the PATCH row above), since the form is showing and
+editing that company's real current values rather than guessing at
+creation-time inline details for a brand-new company.
 
 ## Campaigns — `/api/campaigns`
 

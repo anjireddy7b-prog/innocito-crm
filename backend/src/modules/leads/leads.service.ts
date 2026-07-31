@@ -330,6 +330,67 @@ export async function updateLead(req: Request, id: string, input: any) {
     })
     .where(eq(leads.id, id));
 
+  // Unlike lead-creation time (where inline `company` details only ever apply to a brand-new
+  // company, to protect a shared record from being clobbered by a guess), the Edit Lead form shows
+  // the company's *actual current* Industry/Country/State/Website/Revenue and lets the user amend
+  // them directly — the same fields, same validation, as editing the company from the Companies
+  // page. Only applies when this lead already has a linked company; a lead with no company can't
+  // carry company-detail edits.
+  const effectiveCompanyId = companyId !== undefined ? companyId : before.companyId;
+  if (input.company && effectiveCompanyId) {
+    const details = input.company;
+    await db
+      .update(companies)
+      .set({
+        ...(details.industry !== undefined ? { industry: details.industry } : {}),
+        ...(details.country !== undefined ? { country: details.country } : {}),
+        ...(details.state !== undefined ? { state: details.state } : {}),
+        ...(details.website !== undefined ? { website: normalizeWebsite(details.website) } : {}),
+        ...(details.annualRevenue !== undefined ? { annualRevenue: details.annualRevenue?.toString() ?? null } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(companies.id, effectiveCompanyId));
+  }
+
+  // Meeting Schedule fields on Edit Lead mirror the ones on New Lead: they act on the lead's
+  // "Initial Meeting" (the one created from this same form, at creation time or on a prior edit).
+  // Other meetings added via the Meetings tab are untouched — this keeps the Edit Lead form scoped
+  // to the single meeting it owns, rather than guessing which of possibly several meetings to change.
+  if (input.meetingScheduledDate) {
+    const scheduledAt = combineDateAndTime(new Date(input.meetingScheduledDate), input.meetingScheduledTime);
+    const existingMeeting = await db.query.meetings.findFirst({
+      where: and(eq(meetings.leadId, id), eq(meetings.title, 'Initial Meeting')),
+    });
+    if (existingMeeting) {
+      await db
+        .update(meetings)
+        .set({ scheduledAt, timeZone: input.meetingTimeZone || null, updatedAt: new Date() })
+        .where(eq(meetings.id, existingMeeting.id));
+      await recordActivity({
+        type: 'MEETING_UPDATED',
+        description: `Meeting rescheduled for ${formatLeadNumber(before.leadNumber)}`,
+        leadId: id,
+        userId: req.user!.sub,
+      });
+    } else {
+      await db.insert(meetings).values({
+        leadId: id,
+        title: 'Initial Meeting',
+        type: 'DISCOVERY',
+        status: 'SCHEDULED',
+        scheduledAt,
+        timeZone: input.meetingTimeZone || null,
+        createdById: req.user!.sub,
+      });
+      await recordActivity({
+        type: 'MEETING_SCHEDULED',
+        description: `Meeting scheduled for ${formatLeadNumber(before.leadNumber)}`,
+        leadId: id,
+        userId: req.user!.sub,
+      });
+    }
+  }
+
   const lead = await getLeadById(id);
 
   await recordActivity({

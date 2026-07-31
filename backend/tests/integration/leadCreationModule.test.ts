@@ -160,3 +160,87 @@ describe('Lead Creation module — new fields end to end', () => {
     expect(editRes.status).toBe(200);
   });
 });
+
+describe('Lead Creation module — Edit Lead form parity with New Lead form', () => {
+  let editLeadId: string;
+  let editCompanyId: string;
+
+  beforeAll(async () => {
+    const companyName = `Edit Parity Co ${Date.now().toString(36)}`;
+    const res = await request(app)
+      .post('/api/leads')
+      .set('Authorization', `Bearer ${insideSalesToken}`)
+      .send({
+        companyName,
+        company: { industry: 'Retail', country: 'India', state: 'Karnataka', website: 'editparity.example' },
+        contact: { firstName: 'Edit', lastName: 'Parity' },
+        source: 'WEBSITE',
+        leadReceivedDate: '2026-01-01',
+      });
+    expect(res.status).toBe(201);
+    editLeadId = res.body.data.id;
+    editCompanyId = res.body.data.company.id;
+  });
+
+  it('Edit Lead can update the linked company\'s Industry, Country, State, Website, and Revenue — unlike creation-time inline details, these apply to the existing company since the form shows its real current values', async () => {
+    const res = await request(app)
+      .patch(`/api/leads/${editLeadId}`)
+      .set('Authorization', `Bearer ${insideSalesToken}`)
+      .send({
+        company: { industry: 'BFSI', country: 'USA', state: 'New York', website: 'updated-editparity.example', annualRevenue: 7500000 },
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.data.company.id).toBe(editCompanyId);
+    expect(res.body.data.company.industry).toBe('BFSI');
+    expect(res.body.data.company.country).toBe('USA');
+    expect(res.body.data.company.state).toBe('New York');
+    expect(res.body.data.company.website).toBe('https://updated-editparity.example');
+    expect(Number(res.body.data.company.annualRevenue)).toBe(7500000);
+
+    // Confirm it's a genuine update of the shared company record, not a new one.
+    const companyRes = await request(app).get(`/api/companies/${editCompanyId}`).set('Authorization', `Bearer ${insideSalesToken}`);
+    expect(companyRes.body.data.industry).toBe('BFSI');
+  });
+
+  it('Edit Lead creates the Initial Meeting when the lead has none yet and a Meeting Schedule is set — same as New Lead', async () => {
+    const res = await request(app)
+      .patch(`/api/leads/${editLeadId}`)
+      .set('Authorization', `Bearer ${insideSalesToken}`)
+      .send({ meetingScheduledDate: '2026-03-10', meetingScheduledTime: '09:15', meetingTimeZone: 'CST' });
+    expect(res.status).toBe(200);
+    expect(res.body.data.meetings).toHaveLength(1);
+    expect(res.body.data.meetings[0].title).toBe('Initial Meeting');
+    expect(res.body.data.meetings[0].timeZone).toBe('CST');
+    expect(res.body.data.meetings[0].scheduledAt.slice(0, 16)).toBe('2026-03-10T09:15');
+  });
+
+  it('Edit Lead reschedules the existing Initial Meeting on a second edit instead of creating a duplicate', async () => {
+    const res = await request(app)
+      .patch(`/api/leads/${editLeadId}`)
+      .set('Authorization', `Bearer ${insideSalesToken}`)
+      .send({ meetingScheduledDate: '2026-03-12', meetingScheduledTime: '11:00', meetingTimeZone: 'PST' });
+    expect(res.status).toBe(200);
+    expect(res.body.data.meetings).toHaveLength(1);
+    expect(res.body.data.meetings[0].timeZone).toBe('PST');
+    expect(res.body.data.meetings[0].scheduledAt.slice(0, 16)).toBe('2026-03-12T11:00');
+  });
+
+  it('Edit Lead can update sdrId, leadReceivedDate, campaign, and Email Response in the same request as company/meeting fields', async () => {
+    const campaignsRes = await request(app).get('/api/campaigns?pageSize=100').set('Authorization', `Bearer ${adminToken}`);
+    const staffing = campaignsRes.body.data.find((c: any) => c.code === 'STAFFING');
+    const res = await request(app)
+      .patch(`/api/leads/${editLeadId}`)
+      .set('Authorization', `Bearer ${insideSalesToken}`)
+      .send({
+        sdrId: insideSalesUserId,
+        leadReceivedDate: '2026-01-05',
+        campaignId: staffing.id,
+        emailResponse: 'Edited via the parity-tested Edit Lead form.',
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.data.sdr.id).toBe(insideSalesUserId);
+    expect(res.body.data.leadReceivedDate.slice(0, 10)).toBe('2026-01-05');
+    expect(res.body.data.campaign.id).toBe(staffing.id);
+    expect(res.body.data.emailResponse).toBe('Edited via the parity-tested Edit Lead form.');
+  });
+});
