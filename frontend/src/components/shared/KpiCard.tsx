@@ -20,7 +20,7 @@ const ACCENTS: Record<NonNullable<KpiCardProps['accent']>, string> = {
 export function KpiCard({ label, value, icon: Icon, trend, accent = 'primary' }: KpiCardProps) {
   return (
     <Card className="transition-shadow hover:shadow-md">
-      <CardContent className="flex items-start justify-between p-5">
+      <CardContent className="flex items-center justify-between gap-3 p-5">
         <div>
           <p className="text-sm font-medium text-muted-foreground">{label}</p>
           <p className="mt-2 text-2xl font-semibold tracking-tight">{value}</p>
