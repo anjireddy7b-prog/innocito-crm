@@ -18,7 +18,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard, permission: PERMISSIONS.DASHBOARD_VIEW },
   { label: 'Leads', to: '/leads', icon: Target, permission: PERMISSIONS.LEADS_VIEW },
-  { label: 'Companies', to: '/companies', icon: Building2 },
+  { label: 'Accounts', to: '/companies', icon: Building2 },
   { label: 'Contacts', to: '/contacts', icon: Users },
   { label: 'Campaigns', to: '/campaigns', icon: Megaphone },
   { label: 'Meetings', to: '/meetings', icon: CalendarClock },
