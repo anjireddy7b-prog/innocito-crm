@@ -29,6 +29,13 @@
       "when": 1785479297897,
       "tag": "0003_seed_new_campaigns",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785484324975,
+      "tag": "0004_add_lead_created_by_sdr",
+      "breakpoints": true
     }
   ]
 }

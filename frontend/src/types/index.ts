@@ -80,6 +80,7 @@ export interface Lead {
   currentOwnerId: string | null;
   createdById: string | null;
   sdrId: string | null;
+  createdBySdrId: string | null;
   leadReceivedDate: string;
   meetingDetails: string | null;
   emailResponse: string | null;
@@ -95,6 +96,7 @@ export interface Lead {
   currentOwner: UserSummary | null;
   createdBy: UserSummary | null;
   sdr: UserSummary | null;
+  createdBySdr: UserSummary | null;
   _count?: { meetings: number; tasks: number; documents: number; leadComments: number };
   meetings?: Meeting[];
   tasks?: Task[];

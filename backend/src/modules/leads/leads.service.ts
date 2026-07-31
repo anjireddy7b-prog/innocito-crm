@@ -30,6 +30,7 @@ const leadWith = {
   assignedTo: { columns: { id: true, firstName: true, lastName: true, email: true } },
   currentOwner: { columns: { id: true, firstName: true, lastName: true, email: true } },
   sdr: { columns: { id: true, firstName: true, lastName: true, email: true } },
+  createdBySdr: { columns: { id: true, firstName: true, lastName: true, email: true } },
   createdBy: { columns: { id: true, firstName: true, lastName: true } },
 } as const;
 
@@ -66,6 +67,7 @@ export async function listLeads(query: {
   assignedToId?: string;
   currentOwnerId?: string;
   sdrId?: string;
+  createdBySdrId?: string;
   companyId?: string;
   country?: string;
   industry?: string;
@@ -102,6 +104,7 @@ export async function listLeads(query: {
   if (query.assignedToId) conditions.push(eq(leads.assignedToId, query.assignedToId));
   if (query.currentOwnerId) conditions.push(eq(leads.currentOwnerId, query.currentOwnerId));
   if (query.sdrId) conditions.push(eq(leads.sdrId, query.sdrId));
+  if (query.createdBySdrId) conditions.push(eq(leads.createdBySdrId, query.createdBySdrId));
   if (query.companyId) conditions.push(eq(leads.companyId, query.companyId));
   if (query.country) conditions.push(eq(companies.country, query.country));
   if (query.industry) conditions.push(eq(companies.industry, query.industry));
@@ -229,6 +232,7 @@ export async function createLead(req: Request, input: any) {
       assignedToId: input.assignedToId,
       currentOwnerId: input.currentOwnerId,
       sdrId: input.sdrId,
+      createdBySdrId: input.createdBySdrId,
       leadReceivedDate: input.leadReceivedDate ?? undefined, // defaults to now() at the DB layer when omitted
       meetingDetails: input.meetingDetails,
       emailResponse: input.emailResponse,
@@ -321,6 +325,7 @@ export async function updateLead(req: Request, id: string, input: any) {
       // assignLead() below, which fires its own notification/audit trail. sdrId has no equivalent
       // dedicated endpoint (yet), so it's safe to fold into the general update.
       ...(input.sdrId !== undefined ? { sdrId: input.sdrId } : {}),
+      ...(input.createdBySdrId !== undefined ? { createdBySdrId: input.createdBySdrId } : {}),
       ...(input.leadReceivedDate !== undefined ? { leadReceivedDate: input.leadReceivedDate } : {}),
       meetingDetails: input.meetingDetails,
       emailResponse: input.emailResponse,

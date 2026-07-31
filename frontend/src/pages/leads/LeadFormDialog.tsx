@@ -42,6 +42,7 @@ const schema = z
     category: z.string().optional(),
     emailResponse: z.string().optional(),
     sdrId: z.string().nullable().optional(),
+    createdBySdrId: z.string().nullable().optional(),
     leadReceivedDate: z.string().min(1, 'Lead Received Date is required'),
   })
   .merge(companyDetailsSchema)
@@ -93,6 +94,7 @@ export function LeadFormDialog({ open, onOpenChange }: { open: boolean; onOpenCh
         campaignId: values.campaignId || undefined,
         assignedToId: values.assignedToId || undefined,
         sdrId: values.sdrId || undefined,
+        createdBySdrId: values.createdBySdrId || undefined,
         dealValue: values.dealValue ? Number(values.dealValue) : undefined,
         category: values.category || undefined,
         emailResponse: values.emailResponse || undefined,

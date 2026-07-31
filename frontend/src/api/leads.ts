@@ -15,6 +15,7 @@ export interface LeadsQuery {
   companyId?: string;
   country?: string;
   sdrId?: string;
+  createdBySdrId?: string;
   industry?: string;
   sortBy?: string;
   sortDir?: 'asc' | 'desc';
