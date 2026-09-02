@@ -1,5 +1,5 @@
 import { Fragment } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Target, Building2, Users, Megaphone, Activity, CalendarClock, ListChecks,
   FileText, BarChart3, UserCog, ShieldCheck, Settings, ChevronLeft, ChevronRight,
@@ -45,9 +45,19 @@ function navItemClass(isActive: boolean, collapsed: boolean) {
   );
 }
 
+/**
+ * Mirrors react-router's default (non-`end`) NavLink active-matching: exact match, or the
+ * current path nested one level below `to` (segment-boundary aware, so e.g. "/leads-archive"
+ * would NOT falsely match "/leads"). Computed manually — see the comment on `linkEl` below for why.
+ */
+function isPathActive(pathname: string, to: string) {
+  return pathname === to || pathname.startsWith(`${to}/`);
+}
+
 export function Sidebar() {
   const { hasPermission, hasRole } = useAuthStore();
   const { sidebarCollapsed, toggleSidebar } = useUIStore();
+  const { pathname } = useLocation();
 
   const visibleItems = NAV_ITEMS.filter((item) => {
     if (item.roles && !hasRole(...item.roles)) return false;
@@ -87,12 +97,17 @@ export function Sidebar() {
 
       <nav className="scrollbar-none flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden px-3 py-3">
         {visibleItems.map((item) => {
+          // className is computed as a plain string (not react-router's usual `({isActive}) =>
+          // ...` render-prop form) and isActive is matched manually via `isPathActive` above.
+          // When collapsed, this link renders inside a Radix <TooltipTrigger asChild>, which
+          // clones the element and merges its props — including className. Radix's merge only
+          // knows how to join strings; handed a function it doesn't call, it silently stringifies
+          // the function itself into the class list, so NavLink falls back to just "<fn source>
+          // active" and every bit of layout/active/hover styling on the link is lost. A plain
+          // string sidesteps that merge bug entirely, in both the collapsed and expanded states.
+          const isActive = isPathActive(pathname, item.to);
           const linkEl = (
-            <NavLink
-              to={item.to}
-              aria-label={item.label}
-              className={({ isActive }) => navItemClass(isActive, sidebarCollapsed)}
-            >
+            <NavLink to={item.to} aria-label={item.label} className={navItemClass(isActive, sidebarCollapsed)}>
               <item.icon className="h-4 w-4 shrink-0" />
               {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
             </NavLink>
