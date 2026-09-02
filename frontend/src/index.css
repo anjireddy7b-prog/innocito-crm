@@ -106,6 +106,43 @@
     --input: 0 0% 34%;
     --ring: 199 92% 58%;
   }
+
+  /*
+   * Escapes the .nav-shell dark-chrome cascade. TopNav's notification/user-menu dropdowns
+   * render through a Radix Portal straight to <body>, so they never inherit .nav-shell's
+   * overrides — but GlobalSearch's results panel is a plain in-DOM child of the (dark)
+   * header, so without this it silently inherits dark-chrome colors (e.g. near-white text
+   * on a white popover, invisible until hovered). Re-declares the standard light-theme
+   * values so any floating panel nested inside .nav-shell renders normally regardless.
+   */
+  .theme-light {
+    --background: 220 20% 98%;
+    --foreground: 222 24% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 24% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 24% 12%;
+
+    --primary: 222 89% 45%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 20% 95%;
+    --secondary-foreground: 222 24% 18%;
+
+    --muted: 220 16% 94%;
+    --muted-foreground: 222 12% 42%;
+
+    --accent: 222 89% 96%;
+    --accent-foreground: 222 89% 30%;
+
+    --border: 220 16% 88%;
+    --input: 220 16% 88%;
+    --ring: 222 89% 45%;
+
+    color: hsl(var(--foreground));
+  }
 }
 
 @layer base {

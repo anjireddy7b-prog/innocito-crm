@@ -46,7 +46,7 @@ export function GlobalSearch() {
       </div>
 
       {open && query.trim().length >= 2 && (
-        <div className="absolute left-0 right-0 top-11 z-50 max-h-[70vh] overflow-y-auto rounded-lg border border-border bg-popover shadow-lg animate-in fade-in-0 zoom-in-95">
+        <div className="theme-light absolute left-0 right-0 top-11 z-50 max-h-[70vh] overflow-y-auto rounded-lg border border-border bg-popover text-popover-foreground shadow-lg animate-in fade-in-0 zoom-in-95">
           {!hasResults && !isFetching && <p className="p-4 text-sm text-muted-foreground">No matches for “{query}”.</p>}
 
           {!!data?.leads.length && (
