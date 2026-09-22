@@ -6,7 +6,9 @@ import * as authService from './auth.service';
 
 const REFRESH_COOKIE = 'refresh_token';
 
-function setRefreshCookie(res: Response, token: string) {
+// Exported so organizations.controller.ts's signup handler — which issues a session the same
+// way login does — sets the identical cookie rather than duplicating this config.
+export function setRefreshCookie(res: Response, token: string) {
   res.cookie(REFRESH_COOKIE, token, {
     httpOnly: true,
     secure: isProd,

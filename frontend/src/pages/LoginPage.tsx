@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useNavigate, useLocation, Navigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -71,7 +71,13 @@ export default function LoginPage() {
         <Card className="glass-panel border-white/60 shadow-glass-lg">
           <CardHeader>
             <CardTitle>Sign in</CardTitle>
-            <CardDescription>Use the credentials your Admin provided. New accounts are created by an Admin only.</CardDescription>
+            <CardDescription>
+              Use the credentials your Admin provided, or{' '}
+              <Link to="/signup" className="font-medium text-primary hover:underline">
+                create your organization
+              </Link>{' '}
+              if your team is new here.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

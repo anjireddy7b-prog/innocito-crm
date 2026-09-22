@@ -17,3 +17,17 @@ export const authLimiter = rateLimit({
   legacyHeaders: false,
   message: { success: false, message: 'Too many authentication attempts, please try again later.' },
 });
+
+/**
+ * Tighter still, on organization signup specifically. Unlike login (which only ever touches
+ * existing rows), an unthrottled signup endpoint lets an attacker mint unlimited organizations +
+ * users — a much cheaper and more damaging abuse path than a failed login attempt, so this gets
+ * its own, stricter budget rather than sharing authLimiter's.
+ */
+export const signupLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many signup attempts from this network, please try again later.' },
+});

@@ -216,7 +216,7 @@ export const campaigns = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     organizationId: uuid('organization_id').notNull().references(() => organizations.id),
     name: varchar('name', { length: 200 }).notNull(),
-    code: varchar('code', { length: 20 }).unique(),
+    code: varchar('code', { length: 20 }),
     description: text('description'),
     status: varchar('status', { length: 20 }).notNull().default('ACTIVE'),
     startDate: timestamp('start_date'),
@@ -229,9 +229,13 @@ export const campaigns = pgTable(
   (t) => [
     index('campaigns_status_idx').on(t.status),
     index('campaigns_org_idx').on(t.organizationId),
-    // NOTE: campaigns.code stays globally unique in Phase 1 (this is a low-risk, additive step —
-    // narrowing it to a per-organization unique constraint is deferred to when a second real
-    // organization is onboarded, per the migration plan's incremental-change rule).
+    // Phase 2: narrowed from a platform-wide unique `code` (Phase 1's deliberate, documented
+    // deferral — see the Architecture Report's Section L) to unique-per-organization, now that
+    // self-service org signup (Phase 2) means a second real organization can actually exist and
+    // would otherwise collide with the first org's campaign codes ("Q1", "SPRING24", etc.). NULL
+    // codes are unaffected — Postgres treats each NULL as distinct in a unique index, exactly as
+    // the old column-level constraint already did.
+    uniqueIndex('campaigns_org_code_unique').on(t.organizationId, t.code),
   ]
 );
 

@@ -1,28 +1,31 @@
 import { Router } from 'express';
-import { eq } from 'drizzle-orm';
-import { authenticate } from '@/middleware/auth';
-import { asyncHandler } from '@/utils/asyncHandler';
-import { ApiError } from '@/utils/ApiError';
-import { db } from '@/config/db';
-import { organizations } from '@/db/schema';
-import { orgId } from '@/utils/tenant';
+import { authenticate, requireRole } from '@/middleware/auth';
+import { validate } from '@/middleware/validate';
+import { signupLimiter } from '@/middleware/rateLimiter';
+import { signupSchema, updateOrganizationSchema } from './organizations.validation';
+import * as controller from './organizations.controller';
 
 export const organizationsRouter = Router();
+
+/**
+ * Phase 2: self-service organization signup. Deliberately mounted BEFORE the `authenticate`
+ * middleware below — a brand-new organization has no existing user to authenticate as, so this
+ * is the one route in this module (and one of the few in the whole API, alongside /auth/login and
+ * /auth/refresh) that is intentionally public. Rate-limited more aggressively than login (see
+ * rateLimiter.ts) since it mints new tenants rather than just checking a password.
+ */
+organizationsRouter.post('/signup', signupLimiter, validate(signupSchema), controller.signup);
+
 organizationsRouter.use(authenticate);
 
 /**
- * Phase 1 keeps this module deliberately minimal — just enough for the frontend (and manual
- * verification) to confirm which organization the current session is scoped to. Organization
- * administration (creating additional organizations, editing settings, billing/plan, etc.) is
- * out of scope here and belongs to later phases per the Architecture Report's Migration Plan;
- * this route is read-only and returns only the caller's own organization, never a list of all
- * organizations, since nothing in this app is platform-admin-scoped yet.
+ * Phase 1 kept this module deliberately minimal — just enough for the frontend (and manual
+ * verification) to confirm which organization the current session is scoped to. Phase 2 adds the
+ * one thing genuinely needed now that a second real organization exists: letting that org's own
+ * Admin rename their organization or change its slug. Creating OTHER organizations, billing/plan,
+ * and any platform-admin view across organizations remain out of scope — this route (like /me
+ * below it) only ever reads or writes the caller's own organization, never a list of all of them,
+ * since nothing in this app is platform-admin-scoped yet.
  */
-organizationsRouter.get(
-  '/me',
-  asyncHandler(async (req, res) => {
-    const org = await db.query.organizations.findFirst({ where: eq(organizations.id, orgId(req)) });
-    if (!org) throw ApiError.notFound('Organization not found');
-    res.json({ success: true, data: { id: org.id, name: org.name, slug: org.slug, isActive: org.isActive } });
-  })
-);
+organizationsRouter.get('/me', controller.getMe);
+organizationsRouter.patch('/me', requireRole('ADMIN'), validate(updateOrganizationSchema), controller.updateMe);

@@ -6,6 +6,7 @@ import { ProtectedRoute, RequireRole, RequirePermission } from '@/routes/Protect
 import { AppLayout } from '@/components/layout/AppLayout';
 import { PERMISSIONS } from '@/lib/permissions';
 import LoginPage from '@/pages/LoginPage';
+import SignupPage from '@/pages/SignupPage';
 
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
 const LeadsListPage = lazy(() => import('@/pages/leads/LeadsListPage'));
@@ -41,6 +42,7 @@ export default function App() {
     <Suspense fallback={<PageFallback />}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
 
         <Route
           element={

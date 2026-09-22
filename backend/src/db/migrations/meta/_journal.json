@@ -71,6 +71,13 @@
       "when": 1790075751508,
       "tag": "0009_audit_logs_org_nullable",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790097630218,
+      "tag": "0010_campaigns_code_per_org_unique",
+      "breakpoints": true
     }
   ]
 }
