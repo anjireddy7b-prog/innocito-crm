@@ -22,7 +22,7 @@ export function CompanyDetailsFields<T extends FieldValues & CompanyDetailsFormV
   title?: string;
 }) {
   return (
-    <div className="sm:col-span-2 space-y-4 rounded-md border border-border p-3">
+    <div className="sm:col-span-2 space-y-4 rounded-xl border border-border/60 p-3">
       <p className="text-sm font-medium text-muted-foreground">{title}</p>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">

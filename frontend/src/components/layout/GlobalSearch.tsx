@@ -40,13 +40,13 @@ export function GlobalSearch() {
           }}
           onFocus={() => setOpen(true)}
           placeholder="Search leads, companies, contacts, campaigns, reps…"
-          className="h-9 w-full rounded-md border border-input bg-secondary/60 pl-9 pr-9 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className="h-9 w-full rounded-full border border-transparent bg-secondary/70 pl-9 pr-9 text-sm transition-all placeholder:text-muted-foreground focus-visible:border-ring/40 focus-visible:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
         />
         {isFetching && <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />}
       </div>
 
       {open && query.trim().length >= 2 && (
-        <div className="theme-light absolute left-0 right-0 top-11 z-50 max-h-[70vh] overflow-y-auto rounded-lg border border-border bg-popover text-popover-foreground shadow-lg animate-in fade-in-0 zoom-in-95">
+        <div className="glass-panel absolute left-0 right-0 top-12 z-50 max-h-[70vh] overflow-y-auto rounded-2xl border border-border/60 text-popover-foreground shadow-glass-lg duration-150 ease-apple animate-in fade-in-0 zoom-in-95 slide-in-from-top-1">
           {!hasResults && !isFetching && <p className="p-4 text-sm text-muted-foreground">No matches for “{query}”.</p>}
 
           {!!data?.leads.length && (
@@ -113,7 +113,9 @@ function SearchRow({
   return (
     <button
       onClick={onClick}
-      className={cn('flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground')}
+      className={cn(
+        'mx-2 flex w-[calc(100%-1rem)] items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground'
+      )}
     >
       <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
       <span className="flex-1 truncate">

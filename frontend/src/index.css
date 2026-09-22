@@ -4,144 +4,110 @@
 
 @layer base {
   :root {
-    --background: 220 20% 98%;
-    --foreground: 222 24% 12%;
+    /*
+     * Apple/iOS-inspired light palette. Kept intentionally close to the previous values in hue —
+     * this is a materials-and-depth redesign (glass, blur, generous radii, soft layered shadows),
+     * not a hue-shift — with the one deliberate exception of `--primary`, retuned to iOS system
+     * blue (#007AFF) since that blue is doing a lot of the "this feels like Apple" work.
+     */
+    --background: 220 20% 97%;
+    --foreground: 222 20% 13%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222 24% 12%;
+    --card-foreground: 222 20% 13%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222 24% 12%;
+    --popover-foreground: 222 20% 13%;
 
-    --primary: 222 89% 45%;
+    --primary: 211 100% 50%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 20% 95%;
-    --secondary-foreground: 222 24% 18%;
+    --secondary: 220 20% 94%;
+    --secondary-foreground: 222 20% 20%;
 
-    --muted: 220 16% 94%;
-    --muted-foreground: 222 12% 42%;
+    --muted: 220 18% 95%;
+    --muted-foreground: 220 9% 46%;
 
-    --accent: 222 89% 96%;
-    --accent-foreground: 222 89% 30%;
+    --accent: 211 90% 95%;
+    --accent-foreground: 211 90% 38%;
 
-    --destructive: 0 72% 51%;
+    --destructive: 4 86% 58%;
     --destructive-foreground: 0 0% 100%;
 
-    --success: 152 60% 36%;
+    --success: 142 60% 42%;
     --success-foreground: 0 0% 100%;
 
-    --warning: 38 92% 50%;
-    --warning-foreground: 30 40% 12%;
+    --warning: 35 100% 50%;
+    --warning-foreground: 30 45% 14%;
 
-    --border: 220 16% 88%;
-    --input: 220 16% 88%;
-    --ring: 222 89% 45%;
+    --border: 220 15% 89%;
+    --input: 220 15% 89%;
+    --ring: 211 100% 50%;
 
-    --radius: 0.625rem;
+    /* Apple corner radii run generous — this is the single biggest lever for the "premium,
+       friendly" feel. rounded-lg/-md/-sm below derive from this; bigger surfaces (dialogs,
+       the sidebar, the content shell) use static rounded-2xl/-3xl utilities directly. */
+    --radius: 1rem;
   }
 
   .dark {
-    --background: 222 28% 8%;
-    --foreground: 220 20% 92%;
+    --background: 222 22% 9%;
+    --foreground: 220 20% 93%;
 
-    --card: 222 26% 11%;
-    --card-foreground: 220 20% 92%;
+    --card: 222 20% 13%;
+    --card-foreground: 220 20% 93%;
 
-    --popover: 222 26% 11%;
-    --popover-foreground: 220 20% 92%;
+    --popover: 222 20% 13%;
+    --popover-foreground: 220 20% 93%;
 
-    --primary: 217 91% 62%;
-    --primary-foreground: 222 28% 8%;
+    --primary: 211 100% 56%;
+    --primary-foreground: 222 30% 9%;
 
-    --secondary: 222 20% 16%;
-    --secondary-foreground: 220 20% 92%;
+    --secondary: 222 16% 18%;
+    --secondary-foreground: 220 20% 93%;
 
-    --muted: 222 20% 16%;
+    --muted: 222 16% 18%;
     --muted-foreground: 220 12% 65%;
 
-    --accent: 217 60% 18%;
-    --accent-foreground: 217 91% 80%;
+    --accent: 211 55% 20%;
+    --accent-foreground: 211 90% 80%;
 
-    --destructive: 0 63% 48%;
+    --destructive: 4 70% 55%;
     --destructive-foreground: 0 0% 100%;
 
-    --success: 152 55% 42%;
+    --success: 142 50% 46%;
     --success-foreground: 0 0% 100%;
 
-    --warning: 38 85% 55%;
-    --warning-foreground: 30 40% 12%;
+    --warning: 35 90% 56%;
+    --warning-foreground: 30 45% 14%;
 
-    --border: 222 20% 20%;
-    --input: 222 20% 20%;
-    --ring: 217 91% 62%;
+    --border: 222 16% 22%;
+    --input: 222 16% 22%;
+    --ring: 211 100% 56%;
   }
 
   /*
-   * Persistent dark "chrome" for the top nav + sidebar (applied via the .nav-shell class).
-   * This intentionally overrides the theme variables locally on the header/aside elements so
-   * the nav always renders as a dark charcoal shell with a light-blue accent, regardless of
-   * whether the rest of the app is in light or dark mode — matching the reference layout.
+   * The shared "glass chrome" material — the sidebar, the top nav, and anything else that
+   * should read as a translucent panel floating over the page rather than solid content.
+   * Frosted (blurred + saturated) rather than merely transparent, the way macOS/iOS materials
+   * work: you can tell something is behind it, but it never competes for legibility with what's
+   * drawn on top. Falls back gracefully to a solid `bg-background` where `backdrop-filter` isn't
+   * supported (very old browsers) since these elements always also carry a plain Tailwind bg-*
+   * class as a base.
    */
-  .nav-shell {
-    --background: 0 0% 20%;
-    --foreground: 0 0% 100%;
-
-    --card: 0 0% 20%;
-    --card-foreground: 0 0% 100%;
-
-    --primary: 199 92% 58%;
-    --primary-foreground: 222 47% 11%;
-
-    --secondary: 0 0% 27%;
-    --secondary-foreground: 0 0% 100%;
-
-    --muted: 0 0% 27%;
-    --muted-foreground: 0 0% 100%;
-
-    --accent: 205 20% 32%;
-    --accent-foreground: 199 90% 82%;
-
-    --border: 0 0% 32%;
-    --input: 0 0% 34%;
-    --ring: 199 92% 58%;
+  .glass-chrome {
+    background-color: hsl(var(--background) / 0.72);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
   }
 
-  /*
-   * Escapes the .nav-shell dark-chrome cascade. TopNav's notification/user-menu dropdowns
-   * render through a Radix Portal straight to <body>, so they never inherit .nav-shell's
-   * overrides — but GlobalSearch's results panel is a plain in-DOM child of the (dark)
-   * header, so without this it silently inherits dark-chrome colors (e.g. near-white text
-   * on a white popover, invisible until hovered). Re-declares the standard light-theme
-   * values so any floating panel nested inside .nav-shell renders normally regardless.
-   */
-  .theme-light {
-    --background: 220 20% 98%;
-    --foreground: 222 24% 12%;
-
-    --card: 0 0% 100%;
-    --card-foreground: 222 24% 12%;
-
-    --popover: 0 0% 100%;
-    --popover-foreground: 222 24% 12%;
-
-    --primary: 222 89% 45%;
-    --primary-foreground: 0 0% 100%;
-
-    --secondary: 220 20% 95%;
-    --secondary-foreground: 222 24% 18%;
-
-    --muted: 220 16% 94%;
-    --muted-foreground: 222 12% 42%;
-
-    --accent: 222 89% 96%;
-    --accent-foreground: 222 89% 30%;
-
-    --border: 220 16% 88%;
-    --input: 220 16% 88%;
-    --ring: 222 89% 45%;
-
-    color: hsl(var(--foreground));
+  /* The stronger, more opaque glass used for floating overlays (dialogs, popovers, dropdowns,
+     the command/search panel) — these sit above everything else and need a touch more contrast
+     against arbitrary content behind them than the nav chrome does. */
+  .glass-panel {
+    background-color: hsl(var(--popover) / 0.82);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
   }
 }
 
@@ -153,15 +119,14 @@
     @apply bg-background text-foreground antialiased;
     font-feature-settings: 'cv11', 'ss01';
   }
+  /* A calm, consistent default for color/background/border transitions app-wide, tuned with the
+     "Apple" easing curve from the Tailwind config — fast and decisive, never sluggish. */
+  button, a, input, select, textarea {
+    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
 }
 
 @layer utilities {
-  /* Matches the .nav-shell dark chrome color, used to fill the reveal behind the
-     rounded content card without touching the theme variables main's content relies on. */
-  .chrome-fill {
-    background-color: hsl(0 0% 20%);
-  }
-
   /* Scrolls normally (wheel, trackpad, touch, keyboard) but never draws a visible scrollbar track. */
   .scrollbar-none {
     scrollbar-width: none; /* Firefox */

@@ -52,14 +52,23 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-secondary/60 via-background to-background px-4">
-      <div className="w-full max-w-sm">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4">
+      {/* Soft, blurred color fields behind the glass card — the same "light shining through
+          frosted glass" impression as Apple's own marketing pages, built from flat gradients
+          rather than a photo so it never distracts from the form. */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute -left-32 -top-32 h-96 w-96 rounded-full bg-primary/25 blur-3xl" />
+        <div className="absolute -right-24 top-1/3 h-80 w-80 rounded-full bg-purple-400/20 blur-3xl" />
+        <div className="absolute bottom-0 left-1/3 h-80 w-80 rounded-full bg-success/15 blur-3xl" />
+      </div>
+
+      <div className="relative w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-3 text-center">
-          <img src={sdrReachOutLogoFull} alt="SDR ReachOut" className="h-16 w-auto" />
+          <img src={sdrReachOutLogoFull} alt="SDR ReachOut" className="h-16 w-auto drop-shadow-sm" />
           <p className="text-sm text-muted-foreground">Internal Lead Management Platform</p>
         </div>
 
-        <Card className="shadow-lg">
+        <Card className="glass-panel border-white/60 shadow-glass-lg">
           <CardHeader>
             <CardTitle>Sign in</CardTitle>
             <CardDescription>Use the credentials your Admin provided. New accounts are created by an Admin only.</CardDescription>
@@ -76,7 +85,7 @@ export default function LoginPage() {
                 <Input id="password" type="password" autoComplete="current-password" placeholder="••••••••" {...register('password')} />
                 {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
               </div>
-              <Button type="submit" className="w-full" disabled={submitting}>
+              <Button type="submit" size="lg" className="w-full" disabled={submitting}>
                 {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
                 Sign in
               </Button>

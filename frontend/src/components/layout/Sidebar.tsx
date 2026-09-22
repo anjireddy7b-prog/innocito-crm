@@ -39,9 +39,11 @@ const SIDEBAR_WIDTH_COLLAPSED = 'w-[72px]';
 
 function navItemClass(isActive: boolean, collapsed: boolean) {
   return cn(
-    'flex items-center rounded-md py-2 text-sm font-medium transition-colors',
+    'flex items-center rounded-xl py-2.5 text-sm font-medium transition-all duration-150 ease-apple',
     collapsed ? 'justify-center px-0' : 'gap-3 px-3',
-    isActive ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+    isActive
+      ? 'bg-primary/12 text-primary shadow-glass-sm'
+      : 'text-muted-foreground hover:bg-secondary/70 hover:text-foreground'
   );
 }
 
@@ -68,14 +70,14 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        'nav-shell hidden shrink-0 flex-col overflow-hidden border-r border-border bg-card text-foreground transition-[width] duration-200 ease-in-out md:flex',
+        'glass-chrome hidden shrink-0 flex-col overflow-hidden border-r border-border/60 bg-background text-foreground transition-[width] duration-200 ease-apple md:flex',
         sidebarCollapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH_EXPANDED
       )}
     >
       {/* Collapse/expand toggle — kept at the top of the side nav, above the menu items. */}
       <div
         className={cn(
-          'flex h-12 shrink-0 items-center border-b border-border/60 px-2',
+          'flex h-16 shrink-0 items-center border-b border-border/60 px-2',
           sidebarCollapsed ? 'justify-center' : 'justify-end'
         )}
       >
@@ -86,7 +88,7 @@ export function Sidebar() {
               onClick={toggleSidebar}
               aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
               aria-expanded={!sidebarCollapsed}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-all duration-150 ease-apple hover:bg-secondary/70 hover:text-foreground active:scale-90"
             >
               {sidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
             </button>
@@ -95,7 +97,7 @@ export function Sidebar() {
         </Tooltip>
       </div>
 
-      <nav className="scrollbar-none flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden px-3 py-3">
+      <nav className="scrollbar-none flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-3 py-3">
         {visibleItems.map((item) => {
           // className is computed as a plain string (not react-router's usual `({isActive}) =>
           // ...` render-prop form) and isActive is matched manually via `isPathActive` above.

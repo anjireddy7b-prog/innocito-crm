@@ -41,7 +41,7 @@ export function DataTable<T>({
   skeletonRows = 8,
 }: DataTableProps<T>) {
   return (
-    <div className="rounded-xl border border-border bg-card">
+    <div className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-glass-sm">
       <Table>
         <TableHeader>
           <TableRow>

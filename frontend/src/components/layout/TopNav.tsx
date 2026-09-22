@@ -6,21 +6,18 @@ import sdrReachOutLogo from '@/assets/sdr-reachout-logo.png';
 
 export function TopNav() {
   return (
-    <header className="nav-shell sticky top-0 z-40 flex h-14 shrink-0 items-center gap-4 border-b border-border bg-card px-4 text-foreground">
-      {/*
-        The "SDR" half of the wordmark is dark navy in the source artwork, so it disappears
-        against the dark nav-shell chrome — a small white chip keeps the full lockup legible
-        without recoloring the brand asset itself.
-      */}
-      <Link to="/dashboard" className="flex shrink-0 items-center rounded-md bg-white px-2 py-1">
-        <img src={sdrReachOutLogo} alt="SDR ReachOut" className="h-6 w-auto" />
+    <header className="glass-chrome sticky top-0 z-40 flex h-16 shrink-0 items-center gap-4 border-b border-border/60 bg-background px-5 text-foreground">
+      {/* The nav is a light glass surface now, so the logo's navy wordmark reads fine directly —
+          no chip needed to rescue it from a dark background the way the old dark chrome required. */}
+      <Link to="/dashboard" className="flex shrink-0 items-center transition-transform duration-150 ease-apple hover:scale-[1.02]">
+        <img src={sdrReachOutLogo} alt="SDR ReachOut" className="h-7 w-auto" />
       </Link>
 
       <div className="flex-1 px-2 sm:px-6">
         <GlobalSearch />
       </div>
 
-      <div className="flex shrink-0 items-center gap-1">
+      <div className="flex shrink-0 items-center gap-1.5">
         <NotificationsMenu />
         <UserMenu />
       </div>
