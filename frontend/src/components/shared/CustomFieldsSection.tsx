@@ -19,6 +19,13 @@ import { useCustomFieldDefinitions, CustomFieldDefinition } from '@/api/customFi
  * Phase 5: `entityType` is now a prop (default 'LEAD', unchanged for every existing caller) so the
  * exact same section can render a custom object record's own dynamic fields — see
  * CustomObjectRecordFormDialog.tsx, which passes the object's `key` as entityType.
+ *
+ * Phase 6 (dynamic forms/layouts): fields are grouped by their optional `section` string (see
+ * db/schema.ts's `section` column comment) before rendering, via `groupBySection` below. A field
+ * with no section (the default, and every field that existed before this column) falls into one
+ * shared, unlabeled group — so an org that has never set a section on anything renders pixel-
+ * identical to before this phase existed. A named section renders as its own labeled sub-group,
+ * in the order that name first appears among the already sortOrder-sorted fields.
  */
 export function CustomFieldsSection({
   entityType = 'LEAD',
@@ -50,16 +57,46 @@ export function CustomFieldsSection({
     onChange(next);
   }
 
+  const groups = groupBySection(definitions);
+
   return (
     <div className="space-y-4 sm:col-span-2">
       {!hideHeading && <Label className="text-sm font-semibold text-muted-foreground">Custom Fields</Label>}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {definitions.map((def) => (
-          <CustomFieldInput key={def.id} definition={def} value={bag[def.key]} onChange={(v) => setField(def.key, v)} />
+      <div className="space-y-6">
+        {groups.map((group) => (
+          <div key={group.section ?? '__none__'} className="space-y-3">
+            {group.section && (
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group.section}</p>
+            )}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {group.fields.map((def) => (
+                <CustomFieldInput key={def.id} definition={def} value={bag[def.key]} onChange={(v) => setField(def.key, v)} />
+              ))}
+            </div>
+          </div>
         ))}
       </div>
     </div>
   );
+}
+
+/**
+ * Groups an already sortOrder-sorted definition list by `section`, preserving each group's own
+ * internal field order and ordering the groups themselves by each section's first appearance.
+ * `null` (ungrouped) is just another group key here — it renders with no heading (see caller).
+ */
+function groupBySection(definitions: CustomFieldDefinition[]): { section: string | null; fields: CustomFieldDefinition[] }[] {
+  const order: (string | null)[] = [];
+  const bySection = new Map<string | null, CustomFieldDefinition[]>();
+  for (const def of definitions) {
+    const key = def.section ?? null;
+    if (!bySection.has(key)) {
+      bySection.set(key, []);
+      order.push(key);
+    }
+    bySection.get(key)!.push(def);
+  }
+  return order.map((key) => ({ section: key, fields: bySection.get(key)! }));
 }
 
 function CustomFieldInput({

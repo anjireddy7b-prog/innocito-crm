@@ -24,6 +24,13 @@ export function CustomFieldsTab({ canManage, entityType = 'LEAD' }: { canManage:
     { key: 'label', header: 'Field', cell: (f) => <span className="font-medium">{f.label}</span> },
     { key: 'key', header: 'Key', cell: (f) => <code className="text-xs text-muted-foreground">{f.key}</code> },
     { key: 'fieldType', header: 'Type', cell: (f) => <Badge variant="outline">{humanizeEnum(f.fieldType)}</Badge> },
+    {
+      // Phase 6: which named group (if any) this field renders under on its form — see
+      // CustomFieldsSection.tsx.
+      key: 'section',
+      header: 'Section',
+      cell: (f) => (f.section ? <span className="text-sm">{f.section}</span> : <span className="text-sm text-muted-foreground">—</span>),
+    },
     { key: 'required', header: 'Required', cell: (f) => (f.required ? 'Yes' : '—') },
   ];
 

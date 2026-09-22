@@ -272,8 +272,9 @@ export const customFieldDefinitions = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     organizationId: uuid('organization_id').notNull().references(() => organizations.id),
-    // Schema-generic for future entity types; MVP validation/UI only supports 'LEAD' (see comment
-    // on customFieldTypeEnum above).
+    // 'LEAD' or a tenant-defined custom object's own `key` (see customObjectDefinitions) — Phase 5
+    // generalized this from the original LEAD-only MVP; see customFields.validation.ts's
+    // entityTypeSchema.
     entityType: varchar('entity_type', { length: 50 }).notNull().default('LEAD'),
     key: varchar('key', { length: 100 }).notNull(),
     label: varchar('label', { length: 200 }).notNull(),
@@ -282,6 +283,13 @@ export const customFieldDefinitions = pgTable(
     options: jsonb('options'),
     required: boolean('required').notNull().default(false),
     sortOrder: integer('sort_order').notNull().default(0),
+    // Phase 6 (dynamic forms/layouts): an optional named group this field renders under on its
+    // form (e.g. "Contact Preferences"), purely additive — null (the default, and every field
+    // that existed before this column) renders exactly as before: one flat, unlabeled group. See
+    // CustomFieldsSection.tsx for the grouping/render logic. Deliberately a plain string per field
+    // rather than a separate section-ordering table, matching this codebase's existing pattern for
+    // SELECT/MULTI_SELECT `options` (also a plain per-field list, not its own catalog table).
+    section: varchar('section', { length: 150 }),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },

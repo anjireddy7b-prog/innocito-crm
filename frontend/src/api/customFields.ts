@@ -16,6 +16,10 @@ export interface CustomFieldDefinition {
   options: string[] | null;
   required: boolean;
   sortOrder: number;
+  // Phase 6 (dynamic forms/layouts): an optional named group this field renders under on its form
+  // (see CustomFieldsSection.tsx). null (the default) renders exactly as before Phase 6 existed —
+  // one flat, unlabeled group.
+  section: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -42,6 +46,7 @@ export function useCreateCustomFieldDefinition() {
       options?: string[] | null;
       required?: boolean;
       sortOrder?: number;
+      section?: string | null;
     }) => {
       const res = await api.post<ApiEnvelope<CustomFieldDefinition>>('/custom-fields', payload);
       return res.data.data;
@@ -53,7 +58,7 @@ export function useCreateCustomFieldDefinition() {
 export function useUpdateCustomFieldDefinition(id: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: { label?: string; options?: string[] | null; required?: boolean; sortOrder?: number }) => {
+    mutationFn: async (payload: { label?: string; options?: string[] | null; required?: boolean; sortOrder?: number; section?: string | null }) => {
       const res = await api.patch<ApiEnvelope<CustomFieldDefinition>>(`/custom-fields/${id}`, payload);
       return res.data.data;
     },

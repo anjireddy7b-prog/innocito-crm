@@ -1,0 +1,1 @@
+ALTER TABLE "custom_field_definitions" ADD COLUMN "section" varchar(150);

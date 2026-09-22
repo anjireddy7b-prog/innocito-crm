@@ -9,7 +9,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useCreateCustomFieldDefinition, useUpdateCustomFieldDefinition, CUSTOM_FIELD_TYPES, type CustomFieldDefinition } from '@/api/customFields';
+import {
+  useCreateCustomFieldDefinition,
+  useUpdateCustomFieldDefinition,
+  useCustomFieldDefinitions,
+  CUSTOM_FIELD_TYPES,
+  type CustomFieldDefinition,
+} from '@/api/customFields';
 import { apiErrorMessage } from '@/lib/api';
 import { humanizeEnum } from '@/lib/utils';
 
@@ -28,6 +34,7 @@ const createSchema = z.object({
   fieldType: z.enum(CUSTOM_FIELD_TYPES),
   optionsText: z.string().optional(),
   required: z.boolean(),
+  section: z.string().trim().max(150).optional(),
 });
 type FormValues = z.infer<typeof createSchema>;
 
@@ -38,6 +45,7 @@ function toDefaults(field?: CustomFieldDefinition | null): FormValues {
     fieldType: field?.fieldType ?? 'TEXT',
     optionsText: field?.options?.join('\n') ?? '',
     required: field?.required ?? false,
+    section: field?.section ?? '',
   };
 }
 
@@ -63,6 +71,11 @@ export function CustomFieldFormDialog({
   const isEdit = !!field;
   const createField = useCreateCustomFieldDefinition();
   const updateField = useUpdateCustomFieldDefinition(field?.id ?? '');
+  // Existing section names on this entity type, offered as datalist suggestions so reusing a
+  // section (rather than accidentally typo-ing a near-duplicate) is the easy path — sections are
+  // free text, not drawn from a fixed catalog (see customFields.validation.ts's sectionSchema).
+  const { data: siblingFields } = useCustomFieldDefinitions(entityType);
+  const existingSections = Array.from(new Set((siblingFields ?? []).map((f) => f.section).filter((s): s is string => !!s)));
 
   const { register, handleSubmit, control, reset, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(createSchema),
@@ -90,9 +103,11 @@ export function CustomFieldFormDialog({
       return;
     }
 
+    const section = values.section?.trim() || null;
+
     try {
       if (isEdit) {
-        await updateField.mutateAsync({ label: values.label, options: options ?? null, required: values.required });
+        await updateField.mutateAsync({ label: values.label, options: options ?? null, required: values.required, section });
         toast.success('Custom field updated');
       } else {
         await createField.mutateAsync({
@@ -102,6 +117,7 @@ export function CustomFieldFormDialog({
           fieldType: values.fieldType,
           options: options ?? null,
           required: values.required,
+          section,
         });
         toast.success('Custom field created');
       }
@@ -169,13 +185,24 @@ export function CustomFieldFormDialog({
             </div>
           )}
 
+          <div className="space-y-1.5">
+            <Label>Section</Label>
+            <Input {...register('section')} placeholder="e.g. Contact Preferences" list="custom-field-sections" />
+            <datalist id="custom-field-sections">
+              {existingSections.map((s) => <option key={s} value={s} />)}
+            </datalist>
+            <p className="text-xs text-muted-foreground">
+              Groups this field under a named heading on the form. Leave blank to keep it in the default, unlabeled group.
+            </p>
+          </div>
+
           <label className="flex items-center gap-2 text-sm">
             <Controller
               control={control}
               name="required"
               render={({ field: f }) => <Checkbox checked={f.value} onCheckedChange={(v) => f.onChange(v === true)} />}
             />
-            Required on every new lead
+            Required on every new {entityType === 'LEAD' ? 'lead' : 'record'}
           </label>
 
           <DialogFooter>

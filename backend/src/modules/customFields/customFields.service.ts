@@ -26,7 +26,16 @@ export async function getCustomFieldDefinitionById(org: string, id: string): Pro
 
 export async function createCustomFieldDefinition(
   req: Request,
-  input: { entityType: string; key: string; label: string; fieldType: CustomFieldType; options?: string[] | null; required: boolean; sortOrder: number }
+  input: {
+    entityType: string;
+    key: string;
+    label: string;
+    fieldType: CustomFieldType;
+    options?: string[] | null;
+    required: boolean;
+    sortOrder: number;
+    section?: string | null;
+  }
 ): Promise<CustomFieldDefinition> {
   const org = orgId(req);
 
@@ -60,6 +69,7 @@ export async function createCustomFieldDefinition(
       options: input.options ?? null,
       required: input.required,
       sortOrder: input.sortOrder,
+      section: input.section ?? null,
     })
     .returning();
 
@@ -70,7 +80,7 @@ export async function createCustomFieldDefinition(
 export async function updateCustomFieldDefinition(
   req: Request,
   id: string,
-  input: { label?: string; options?: string[] | null; required?: boolean; sortOrder?: number }
+  input: { label?: string; options?: string[] | null; required?: boolean; sortOrder?: number; section?: string | null }
 ): Promise<CustomFieldDefinition> {
   const org = orgId(req);
   const before = await getCustomFieldDefinitionById(org, id);
@@ -81,6 +91,11 @@ export async function updateCustomFieldDefinition(
     throw ApiError.badRequest('At least one option is required for SELECT/MULTI_SELECT fields');
   }
 
+  // section === undefined means "leave as-is" (omitted from the request); explicit null clears it
+  // back to ungrouped — same undefined-vs-null convention already used for description elsewhere
+  // (see customObjects.service.ts's updateCustomObjectDefinition).
+  const nextSection = input.section === undefined ? before.section : input.section;
+
   const [updated] = await db
     .update(customFieldDefinitions)
     .set({
@@ -88,6 +103,7 @@ export async function updateCustomFieldDefinition(
       options: nextOptions,
       required: input.required ?? before.required,
       sortOrder: input.sortOrder ?? before.sortOrder,
+      section: nextSection,
       updatedAt: new Date(),
     })
     .where(eq(customFieldDefinitions.id, id))

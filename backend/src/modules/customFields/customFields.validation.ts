@@ -24,6 +24,13 @@ export const keySchema = z
 
 export const entityTypeSchema = z.union([z.literal('LEAD'), keySchema]);
 
+// Phase 6 (dynamic forms/layouts): an optional named group this field renders under (e.g.
+// "Contact Preferences") on both the lead form and a custom object's record form — see
+// db/schema.ts's `section` column comment and CustomFieldsSection.tsx's grouping logic. Free text,
+// not drawn from a fixed catalog: two fields sharing the exact same string render under the same
+// group heading, in the order fields are otherwise sorted by (sortOrder, createdAt).
+export const sectionSchema = z.string().trim().min(1).max(150).optional().nullable();
+
 function checkOptionsForChoiceTypes(data: { fieldType: CustomFieldType; options?: string[] | null }, ctx: z.RefinementCtx) {
   if (CHOICE_TYPES.includes(data.fieldType) && (!data.options || data.options.length === 0)) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['options'], message: 'At least one option is required for SELECT/MULTI_SELECT fields' });
@@ -46,6 +53,7 @@ export const createCustomFieldDefinitionSchema = z
     options: z.array(z.string().trim().min(1).max(200)).max(50).optional().nullable(),
     required: z.boolean().default(false),
     sortOrder: z.number().int().min(0).max(10000).default(0),
+    section: sectionSchema,
   })
   .superRefine(checkOptionsForChoiceTypes);
 
@@ -54,4 +62,5 @@ export const updateCustomFieldDefinitionSchema = z.object({
   options: z.array(z.string().trim().min(1).max(200)).max(50).optional().nullable(),
   required: z.boolean().optional(),
   sortOrder: z.number().int().min(0).max(10000).optional(),
+  section: sectionSchema,
 });
