@@ -4,6 +4,7 @@ import { authenticate } from '@/middleware/auth';
 import { asyncHandler } from '@/utils/asyncHandler';
 import { db } from '@/config/db';
 import { activities } from '@/db/schema';
+import { orgId } from '@/utils/tenant';
 
 export const activitiesRouter = Router();
 activitiesRouter.use(authenticate);
@@ -13,13 +14,13 @@ activitiesRouter.get(
   '/',
   asyncHandler(async (req, res) => {
     const { leadId, companyId, contactId, limit } = req.query as Record<string, string>;
-    const conditions: SQL[] = [];
+    const conditions: SQL[] = [eq(activities.organizationId, orgId(req))];
     if (leadId) conditions.push(eq(activities.leadId, leadId));
     if (companyId) conditions.push(eq(activities.companyId, companyId));
     if (contactId) conditions.push(eq(activities.contactId, contactId));
 
     const rows = await db.query.activities.findMany({
-      where: conditions.length ? and(...conditions) : undefined,
+      where: and(...conditions),
       orderBy: desc(activities.createdAt),
       limit: limit ? Math.min(Number(limit), 200) : 50,
       with: {

@@ -7,6 +7,7 @@ import { users, roles } from '@/db/schema';
 import { ApiError } from '@/utils/ApiError';
 import { recordAudit } from '@/utils/auditLogger';
 import { paginationMeta, toLimitOffset } from '@/utils/pagination';
+import { orgId } from '@/utils/tenant';
 
 function generateTempPassword(): string {
   const raw = crypto.randomBytes(9).toString('base64url');
@@ -28,7 +29,7 @@ const userColumns = {
   updatedAt: true,
 } as const;
 
-export async function listUsers(query: {
+export async function listUsers(org: string, query: {
   page: number;
   pageSize: number;
   search?: string;
@@ -37,7 +38,7 @@ export async function listUsers(query: {
   sortBy?: string;
   sortDir: 'asc' | 'desc';
 }) {
-  const conditions: SQL[] = [];
+  const conditions: SQL[] = [eq(users.organizationId, org)];
   if (query.search) {
     conditions.push(
       or(
@@ -75,9 +76,9 @@ export async function listUsers(query: {
   return { data: rows, meta: paginationMeta(Number(total), query.page, query.pageSize) };
 }
 
-export async function getUserById(id: string) {
+export async function getUserById(org: string, id: string) {
   const user = await db.query.users.findFirst({
-    where: eq(users.id, id),
+    where: and(eq(users.organizationId, org), eq(users.id, id)),
     columns: userColumns,
     with: { role: { columns: { id: true, name: true } }, createdBy: { columns: { id: true, firstName: true, lastName: true } } },
   });
@@ -97,9 +98,14 @@ export async function createUser(
     temporaryPassword?: string;
   }
 ) {
+  const org = orgId(req);
   const role = await db.query.roles.findFirst({ where: eq(roles.name, input.roleName as any) });
   if (!role) throw ApiError.badRequest('Unknown role');
 
+  // NOTE: email uniqueness stays platform-wide in Phase 1 (users.email has a global unique
+  // constraint — see db/schema.ts) rather than per-organization; narrowing it is deferred to
+  // when a second real organization actually needs the same email, per the incremental-change
+  // rule in the Architecture Report's Migration Plan (the same deferral as campaigns.code).
   const existing = await db.query.users.findFirst({ where: eq(users.email, input.email.toLowerCase()) });
   if (existing) throw ApiError.conflict('A user with this email already exists');
 
@@ -109,6 +115,7 @@ export async function createUser(
   const [created] = await db
     .insert(users)
     .values({
+      organizationId: org,
       email: input.email.toLowerCase(),
       firstName: input.firstName,
       lastName: input.lastName,
@@ -121,7 +128,7 @@ export async function createUser(
     })
     .returning();
 
-  const user = await getUserById(created.id);
+  const user = await getUserById(org, created.id);
   await recordAudit({ req, action: 'CREATE', entityType: 'User', entityId: user.id, newValues: user });
 
   return { user, temporaryPassword: tempPassword };
@@ -132,7 +139,8 @@ export async function updateUser(
   id: string,
   input: { email?: string; firstName?: string; lastName?: string; phone?: string | null; jobTitle?: string | null; roleName?: string }
 ) {
-  const before = await db.query.users.findFirst({ where: eq(users.id, id) });
+  const org = orgId(req);
+  const before = await db.query.users.findFirst({ where: and(eq(users.organizationId, org), eq(users.id, id)) });
   if (!before) throw ApiError.notFound('User not found');
 
   let roleId: string | undefined;
@@ -169,7 +177,7 @@ export async function updateUser(
     })
     .where(eq(users.id, id));
 
-  const user = await getUserById(id);
+  const user = await getUserById(org, id);
 
   await recordAudit({
     req,
@@ -201,13 +209,19 @@ export async function setUserActive(req: Request, id: string, isActive: boolean)
   if (id === req.user!.sub && !isActive) {
     throw ApiError.badRequest('You cannot disable your own account');
   }
+  const org = orgId(req);
+  const existing = await db.query.users.findFirst({ where: and(eq(users.organizationId, org), eq(users.id, id)) });
+  if (!existing) throw ApiError.notFound('User not found');
   await db.update(users).set({ isActive, updatedAt: new Date() }).where(eq(users.id, id));
-  const user = await getUserById(id);
+  const user = await getUserById(org, id);
   await recordAudit({ req, action: 'UPDATE', entityType: 'User', entityId: id, newValues: { isActive } });
   return user;
 }
 
 export async function resetPassword(req: Request, id: string, newPassword?: string) {
+  const org = orgId(req);
+  const existing = await db.query.users.findFirst({ where: and(eq(users.organizationId, org), eq(users.id, id)) });
+  if (!existing) throw ApiError.notFound('User not found');
   const tempPassword = newPassword ?? generateTempPassword();
   const passwordHash = await argon2.hash(tempPassword);
   await db.update(users).set({ passwordHash, mustChangePassword: true, updatedAt: new Date() }).where(eq(users.id, id));
@@ -216,8 +230,8 @@ export async function resetPassword(req: Request, id: string, newPassword?: stri
 }
 
 /** Lightweight list for assignment dropdowns (active users only, minimal fields). */
-export async function listAssignableUsers(roleNames?: string[]) {
-  const conditions: SQL[] = [eq(users.isActive, true)];
+export async function listAssignableUsers(org: string, roleNames?: string[]) {
+  const conditions: SQL[] = [eq(users.organizationId, org), eq(users.isActive, true)];
   const rows = await db.query.users.findMany({
     where: and(...conditions),
     columns: { id: true, firstName: true, lastName: true, email: true },

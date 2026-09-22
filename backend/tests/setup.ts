@@ -2,7 +2,7 @@ import { beforeAll, afterAll } from 'vitest';
 import argon2 from 'argon2';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { db, pool } from '@/config/db';
-import { roles, permissions, rolePermissions, users, campaigns } from '@/db/schema';
+import { organizations, roles, permissions, rolePermissions, users, campaigns } from '@/db/schema';
 import { ALL_PERMISSIONS, ROLE_PERMISSIONS } from '@/utils/permissions';
 import { NEW_CAMPAIGN_SEEDS } from '@/utils/leadFormOptions';
 import { eq } from 'drizzle-orm';
@@ -11,7 +11,20 @@ export const TEST_ADMIN = { email: 'admin@innocito.com', password: 'ChangeMe!123
 export const TEST_INSIDE_SALES = { email: 'inside.sales@innocito.com', password: 'Welcome@123' };
 export const TEST_SALES = { email: 'sales@innocito.com', password: 'Welcome@123' };
 
+// A second, wholly separate tenant — exported so tenant-isolation tests (see
+// tenantIsolation.test.ts) can prove org A's data is invisible to it, and vice versa, without
+// depending on seedMinimal()'s internals.
+export const TEST_ORG_B_ADMIN = { email: 'admin@othertenant.com', password: 'ChangeMe!123' };
+
+export let primaryOrgId: string;
+export let secondaryOrgId: string;
+
 async function seedMinimal() {
+  const [primaryOrg] = await db.insert(organizations).values({ name: 'Test Org', slug: 'test-org' }).returning();
+  primaryOrgId = primaryOrg.id;
+  const [secondaryOrg] = await db.insert(organizations).values({ name: 'Other Tenant', slug: 'other-tenant' }).returning();
+  secondaryOrgId = secondaryOrg.id;
+
   const permissionRows = await Promise.all(
     ALL_PERMISSIONS.map(async (key) => {
       const [row] = await db.insert(permissions).values({ key }).returning();
@@ -33,6 +46,7 @@ async function seedMinimal() {
   }
 
   await db.insert(users).values({
+    organizationId: primaryOrgId,
     email: TEST_ADMIN.email,
     firstName: 'Test',
     lastName: 'Admin',
@@ -43,6 +57,7 @@ async function seedMinimal() {
   });
 
   await db.insert(users).values({
+    organizationId: primaryOrgId,
     email: TEST_INSIDE_SALES.email,
     firstName: 'Test',
     lastName: 'InsideSales',
@@ -53,6 +68,7 @@ async function seedMinimal() {
   });
 
   await db.insert(users).values({
+    organizationId: primaryOrgId,
     email: TEST_SALES.email,
     firstName: 'Test',
     lastName: 'Sales',
@@ -62,9 +78,22 @@ async function seedMinimal() {
     isActive: true,
   });
 
+  // A lone Admin in a second organization — every tenant-isolation test authenticates as this
+  // user to prove they can't see/touch anything created under primaryOrgId.
+  await db.insert(users).values({
+    organizationId: secondaryOrgId,
+    email: TEST_ORG_B_ADMIN.email,
+    firstName: 'Other',
+    lastName: 'Admin',
+    roleId: roleIds.ADMIN,
+    passwordHash: await argon2.hash(TEST_ORG_B_ADMIN.password),
+    mustChangePassword: false,
+    isActive: true,
+  });
+
   // Mirrors migration 0003_seed_new_campaigns.sql — the TRUNCATE below wipes out whatever the
   // migration inserted, so the fixtures re-seed the same rows for tests that rely on them.
-  await db.insert(campaigns).values(NEW_CAMPAIGN_SEEDS.map((c) => ({ ...c, status: 'ACTIVE' as const })));
+  await db.insert(campaigns).values(NEW_CAMPAIGN_SEEDS.map((c) => ({ ...c, organizationId: primaryOrgId, status: 'ACTIVE' as const })));
 }
 
 beforeAll(async () => {
@@ -73,7 +102,7 @@ beforeAll(async () => {
   const tableNames = [
     'audit_logs', 'notifications', 'activities', 'comments', 'documents', 'tasks', 'meetings',
     'leads', 'campaigns', 'contacts', 'companies', 'refresh_tokens', 'users', 'role_permissions',
-    'permissions', 'roles',
+    'permissions', 'roles', 'organizations',
   ];
   await pool.query(`TRUNCATE TABLE ${tableNames.join(', ')} RESTART IDENTITY CASCADE`);
   await seedMinimal();

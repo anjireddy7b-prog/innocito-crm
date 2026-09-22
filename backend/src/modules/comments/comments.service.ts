@@ -1,30 +1,36 @@
 import { Request } from 'express';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { db } from '@/config/db';
 import { comments, leads } from '@/db/schema';
 import { ApiError } from '@/utils/ApiError';
 import { recordActivity } from '@/utils/activityLogger';
 import { recordAudit } from '@/utils/auditLogger';
+import { orgId } from '@/utils/tenant';
 
-export async function listComments(leadId: string) {
+export async function listComments(org: string, leadId: string) {
   return db.query.comments.findMany({
-    where: eq(comments.leadId, leadId),
+    where: and(eq(comments.organizationId, org), eq(comments.leadId, leadId)),
     orderBy: desc(comments.createdAt),
     with: { user: { columns: { id: true, firstName: true, lastName: true, avatarUrl: true } } },
   });
 }
 
 export async function createComment(req: Request, input: { leadId: string; body: string }) {
-  const lead = await db.query.leads.findFirst({ where: eq(leads.id, input.leadId) });
+  const org = orgId(req);
+  const lead = await db.query.leads.findFirst({ where: and(eq(leads.organizationId, org), eq(leads.id, input.leadId)) });
   if (!lead) throw ApiError.notFound('Lead not found');
 
-  const [created] = await db.insert(comments).values({ leadId: input.leadId, userId: req.user!.sub, body: input.body }).returning();
+  const [created] = await db
+    .insert(comments)
+    .values({ organizationId: org, leadId: input.leadId, userId: req.user!.sub, body: input.body })
+    .returning();
   const comment = await db.query.comments.findFirst({
     where: eq(comments.id, created.id),
     with: { user: { columns: { id: true, firstName: true, lastName: true, avatarUrl: true } } },
   });
 
   await recordActivity({
+    organizationId: org,
     type: 'COMMENT_ADDED',
     description: 'Comment added',
     leadId: input.leadId,
@@ -37,7 +43,8 @@ export async function createComment(req: Request, input: { leadId: string; body:
 }
 
 export async function updateComment(req: Request, id: string, body: string) {
-  const comment = await db.query.comments.findFirst({ where: eq(comments.id, id) });
+  const org = orgId(req);
+  const comment = await db.query.comments.findFirst({ where: and(eq(comments.organizationId, org), eq(comments.id, id)) });
   if (!comment) throw ApiError.notFound('Comment not found');
   if (comment.userId !== req.user!.sub && req.user!.role !== 'ADMIN') {
     throw ApiError.forbidden('You can only edit your own comments');
@@ -48,7 +55,8 @@ export async function updateComment(req: Request, id: string, body: string) {
 }
 
 export async function deleteComment(req: Request, id: string) {
-  const comment = await db.query.comments.findFirst({ where: eq(comments.id, id) });
+  const org = orgId(req);
+  const comment = await db.query.comments.findFirst({ where: and(eq(comments.organizationId, org), eq(comments.id, id)) });
   if (!comment) throw ApiError.notFound('Comment not found');
   if (comment.userId !== req.user!.sub && req.user!.role !== 'ADMIN') {
     throw ApiError.forbidden('You can only delete your own comments');

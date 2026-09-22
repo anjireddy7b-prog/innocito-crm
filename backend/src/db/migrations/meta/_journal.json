@@ -43,6 +43,34 @@
       "when": 1785489683105,
       "tag": "0005_add_email_changed_audit_action",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790075481029,
+      "tag": "0006_add_organizations_and_tenant_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790075489770,
+      "tag": "0007_backfill_default_organization",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790075522851,
+      "tag": "0008_tenant_columns_not_null",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790075751508,
+      "tag": "0009_audit_logs_org_nullable",
+      "breakpoints": true
     }
   ]
 }

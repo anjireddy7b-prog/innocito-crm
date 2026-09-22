@@ -11,6 +11,7 @@ import { formatLeadNumber, parseLeadNumber } from '@/utils/leadNumber';
 import { cache } from '@/config/redis';
 import { PERMISSIONS } from '@/utils/permissions';
 import { normalizeWebsite } from '@/utils/leadFormOptions';
+import { orgId } from '@/utils/tenant';
 
 /**
  * Combines a calendar date with an "HH:MM" time-of-day into one Date, the same "naive wall-clock,
@@ -56,7 +57,7 @@ function canEditLead(req: Request, lead: { assignedToId: string | null; currentO
   return lead.assignedToId === uid || lead.currentOwnerId === uid || lead.createdById === uid;
 }
 
-export async function listLeads(query: {
+export async function listLeads(org: string, query: {
   page: number;
   pageSize: number;
   search?: string;
@@ -76,7 +77,7 @@ export async function listLeads(query: {
   sortBy?: string;
   sortDir: 'asc' | 'desc';
 }) {
-  const conditions: SQL[] = [eq(leads.isActive, true)];
+  const conditions: SQL[] = [eq(leads.organizationId, org), eq(leads.isActive, true)];
 
   if (query.search) {
     const asNumber = parseLeadNumber(query.search);
@@ -155,9 +156,9 @@ export async function listLeads(query: {
   return { data: withCountsRows.map(serializeLead), meta: paginationMeta(Number(total), query.page, query.pageSize) };
 }
 
-export async function getLeadById(id: string) {
+export async function getLeadById(org: string, id: string) {
   const lead = await db.query.leads.findFirst({
-    where: eq(leads.id, id),
+    where: and(eq(leads.organizationId, org), eq(leads.id, id)),
     with: {
       ...leadWith,
       meetings: { orderBy: (m, { desc }) => desc(m.scheduledAt) },
@@ -173,9 +174,12 @@ export async function getLeadById(id: string) {
 }
 
 async function resolveCompanyAndContact(req: Request, input: any) {
+  const org = orgId(req);
   let companyId: string | null = input.companyId ?? null;
   if (!companyId && input.companyName) {
-    const existing = await db.query.companies.findFirst({ where: ilike(companies.name, input.companyName) });
+    const existing = await db.query.companies.findFirst({
+      where: and(eq(companies.organizationId, org), ilike(companies.name, input.companyName)),
+    });
     if (existing) {
       // Existing company: never overwrite its Industry/Country/State/Website/Revenue from this
       // lead's inline `company` details — those belong to the company record and are shared
@@ -186,6 +190,7 @@ async function resolveCompanyAndContact(req: Request, input: any) {
       const [created] = await db
         .insert(companies)
         .values({
+          organizationId: org,
           name: input.companyName,
           industry: details.industry ?? null,
           country: details.country ?? null,
@@ -203,7 +208,7 @@ async function resolveCompanyAndContact(req: Request, input: any) {
   if (!contactId && input.contact) {
     const [created] = await db
       .insert(contacts)
-      .values({ ...input.contact, email: input.contact.email || null, companyId, createdById: req.user!.sub })
+      .values({ ...input.contact, email: input.contact.email || null, companyId, organizationId: org, createdById: req.user!.sub })
       .returning();
     contactId = created.id;
   }
@@ -212,11 +217,13 @@ async function resolveCompanyAndContact(req: Request, input: any) {
 }
 
 export async function createLead(req: Request, input: any) {
+  const org = orgId(req);
   const { companyId, contactId } = await resolveCompanyAndContact(req, input);
 
   const [created] = await db
     .insert(leads)
     .values({
+      organizationId: org,
       companyId,
       contactId,
       campaignId: input.campaignId ?? null,
@@ -247,6 +254,7 @@ export async function createLead(req: Request, input: any) {
   if (input.meetingScheduledDate) {
     const scheduledAt = combineDateAndTime(new Date(input.meetingScheduledDate), input.meetingScheduledTime);
     await db.insert(meetings).values({
+      organizationId: org,
       leadId: created.id,
       title: 'Initial Meeting',
       type: 'DISCOVERY',
@@ -256,6 +264,7 @@ export async function createLead(req: Request, input: any) {
       createdById: req.user!.sub,
     });
     await recordActivity({
+      organizationId: org,
       type: 'MEETING_SCHEDULED',
       description: `Meeting scheduled for ${formatLeadNumber(created.leadNumber)}`,
       leadId: created.id,
@@ -263,9 +272,10 @@ export async function createLead(req: Request, input: any) {
     });
   }
 
-  const lead = await getLeadById(created.id);
+  const lead = await getLeadById(org, created.id);
 
   await recordActivity({
+    organizationId: org,
     type: 'LEAD_CREATED',
     description: `Lead ${formatLeadNumber(created.leadNumber)} created`,
     leadId: created.id,
@@ -296,7 +306,8 @@ export async function createLead(req: Request, input: any) {
 }
 
 export async function updateLead(req: Request, id: string, input: any) {
-  const before = await db.query.leads.findFirst({ where: eq(leads.id, id) });
+  const org = orgId(req);
+  const before = await db.query.leads.findFirst({ where: and(eq(leads.organizationId, org), eq(leads.id, id)) });
   if (!before) throw ApiError.notFound('Lead not found');
   if (!canEditLead(req, before)) throw ApiError.forbidden('You do not have permission to edit this lead');
 
@@ -372,6 +383,7 @@ export async function updateLead(req: Request, id: string, input: any) {
         .set({ scheduledAt, timeZone: input.meetingTimeZone || null, updatedAt: new Date() })
         .where(eq(meetings.id, existingMeeting.id));
       await recordActivity({
+        organizationId: org,
         type: 'MEETING_UPDATED',
         description: `Meeting rescheduled for ${formatLeadNumber(before.leadNumber)}`,
         leadId: id,
@@ -379,6 +391,7 @@ export async function updateLead(req: Request, id: string, input: any) {
       });
     } else {
       await db.insert(meetings).values({
+        organizationId: org,
         leadId: id,
         title: 'Initial Meeting',
         type: 'DISCOVERY',
@@ -388,6 +401,7 @@ export async function updateLead(req: Request, id: string, input: any) {
         createdById: req.user!.sub,
       });
       await recordActivity({
+        organizationId: org,
         type: 'MEETING_SCHEDULED',
         description: `Meeting scheduled for ${formatLeadNumber(before.leadNumber)}`,
         leadId: id,
@@ -396,9 +410,10 @@ export async function updateLead(req: Request, id: string, input: any) {
     }
   }
 
-  const lead = await getLeadById(id);
+  const lead = await getLeadById(org, id);
 
   await recordActivity({
+    organizationId: org,
     type: 'LEAD_UPDATED',
     description: `Lead ${formatLeadNumber(before.leadNumber)} details updated`,
     leadId: id,
@@ -411,7 +426,8 @@ export async function updateLead(req: Request, id: string, input: any) {
 }
 
 export async function assignLead(req: Request, id: string, input: { assignedToId?: string | null; currentOwnerId?: string | null; note?: string }) {
-  const before = await db.query.leads.findFirst({ where: eq(leads.id, id) });
+  const org = orgId(req);
+  const before = await db.query.leads.findFirst({ where: and(eq(leads.organizationId, org), eq(leads.id, id)) });
   if (!before) throw ApiError.notFound('Lead not found');
 
   await db
@@ -423,12 +439,13 @@ export async function assignLead(req: Request, id: string, input: { assignedToId
     })
     .where(eq(leads.id, id));
 
-  const lead = await getLeadById(id);
+  const lead = await getLeadById(org, id);
 
   const changedOwner = input.currentOwnerId !== undefined && input.currentOwnerId !== before.currentOwnerId;
   const changedAssignee = input.assignedToId !== undefined && input.assignedToId !== before.assignedToId;
 
   await recordActivity({
+    organizationId: org,
     type: before.assignedToId || before.currentOwnerId ? 'LEAD_REASSIGNED' : 'LEAD_ASSIGNED',
     description: `Lead ${formatLeadNumber(before.leadNumber)} reassigned${input.note ? `: ${input.note}` : ''}`,
     leadId: id,
@@ -469,6 +486,15 @@ export async function assignLead(req: Request, id: string, input: { assignedToId
 }
 
 export async function bulkAssignLeads(req: Request, input: { leadIds: string[]; assignedToId?: string | null; currentOwnerId?: string | null }) {
+  const org = orgId(req);
+  // Scoped by organization so a bulk-assign call can never touch another tenant's leads even if
+  // a stray id from elsewhere ended up in leadIds.
+  const owned = await db
+    .select({ id: leads.id })
+    .from(leads)
+    .where(and(eq(leads.organizationId, org), inArray(leads.id, input.leadIds)));
+  const ownedIds = owned.map((r) => r.id);
+
   await db
     .update(leads)
     .set({
@@ -476,16 +502,16 @@ export async function bulkAssignLeads(req: Request, input: { leadIds: string[]; 
       ...(input.currentOwnerId !== undefined ? { currentOwnerId: input.currentOwnerId } : {}),
       updatedAt: new Date(),
     })
-    .where(inArray(leads.id, input.leadIds));
+    .where(inArray(leads.id, ownedIds));
 
   await Promise.all(
-    input.leadIds.map((leadId) =>
-      recordActivity({ type: 'LEAD_REASSIGNED', description: 'Bulk assignment update', leadId, userId: req.user!.sub })
+    ownedIds.map((leadId) =>
+      recordActivity({ organizationId: org, type: 'LEAD_REASSIGNED', description: 'Bulk assignment update', leadId, userId: req.user!.sub })
     )
   );
-  await recordAudit({ req, action: 'ASSIGNMENT_CHANGED', entityType: 'Lead', newValues: input });
+  await recordAudit({ req, action: 'ASSIGNMENT_CHANGED', entityType: 'Lead', newValues: { ...input, leadIds: ownedIds } });
   await cache.del('dashboard:*');
-  return { updated: input.leadIds.length };
+  return { updated: ownedIds.length };
 }
 
 // Previously the lead pipeline enforced a strict stage order (e.g. you could
@@ -499,7 +525,8 @@ export async function bulkAssignLeads(req: Request, input: { leadIds: string[]; 
 // "which stage can follow which stage" ordering rule, not the set of valid
 // statuses.
 export async function changeLeadStatus(req: Request, id: string, input: { status: string; lossReason?: string | null; note?: string }) {
-  const before = await db.query.leads.findFirst({ where: eq(leads.id, id) });
+  const org = orgId(req);
+  const before = await db.query.leads.findFirst({ where: and(eq(leads.organizationId, org), eq(leads.id, id)) });
   if (!before) throw ApiError.notFound('Lead not found');
   if (!canEditLead(req, before)) throw ApiError.forbidden('You do not have permission to edit this lead');
 
@@ -514,9 +541,10 @@ export async function changeLeadStatus(req: Request, id: string, input: { status
     })
     .where(eq(leads.id, id));
 
-  const lead = await getLeadById(id);
+  const lead = await getLeadById(org, id);
 
   await recordActivity({
+    organizationId: org,
     type: 'STATUS_CHANGED',
     description: `Status changed from ${before.status} to ${input.status}${input.note ? `: ${input.note}` : ''}`,
     leadId: id,
@@ -549,7 +577,8 @@ export async function changeLeadStatus(req: Request, id: string, input: { status
 }
 
 export async function deleteLead(req: Request, id: string) {
-  const before = await db.query.leads.findFirst({ where: eq(leads.id, id) });
+  const org = orgId(req);
+  const before = await db.query.leads.findFirst({ where: and(eq(leads.organizationId, org), eq(leads.id, id)) });
   if (!before) throw ApiError.notFound('Lead not found');
   await db.update(leads).set({ isActive: false, updatedAt: new Date() }).where(eq(leads.id, id));
   await recordAudit({ req, action: 'DELETE', entityType: 'Lead', entityId: id, oldValues: before });

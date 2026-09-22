@@ -7,6 +7,11 @@ export interface AccessTokenPayload {
   email: string;
   role: string;
   permissions: string[];
+  // The caller's tenant, set server-side at login/refresh from the user's own DB row (never
+  // accepted from any client-supplied field) and re-derived on every request from this signed,
+  // verified JWT — the same trust model already used for `role`/`permissions` above. Every
+  // tenant-scoped query must read it via utils/tenant.ts's orgId(req), not from req.body/query.
+  organizationId: string;
 }
 
 export function signAccessToken(payload: AccessTokenPayload): string {

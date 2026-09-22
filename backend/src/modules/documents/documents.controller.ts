@@ -1,10 +1,11 @@
 import { Request, Response } from 'express';
 import { asyncHandler } from '@/utils/asyncHandler';
 import { ApiError } from '@/utils/ApiError';
+import { orgId } from '@/utils/tenant';
 import * as service from './documents.service';
 
 export const list = asyncHandler(async (req: Request, res: Response) => {
-  res.json({ success: true, data: await service.listDocuments(req.query as any) });
+  res.json({ success: true, data: await service.listDocuments(orgId(req), req.query as any) });
 });
 
 export const upload = asyncHandler(async (req: Request, res: Response) => {

@@ -5,6 +5,7 @@ import type { activityTypeEnum } from '@/db/schema';
 type ActivityType = (typeof activityTypeEnum.enumValues)[number];
 
 interface ActivityParams {
+  organizationId: string;
   type: ActivityType;
   description: string;
   leadId?: string;
@@ -19,11 +20,16 @@ interface ActivityParams {
  * security-focused AuditLog). This powers the "complete activity timeline"
  * shown on a Lead's detail page: creation, assignment, meetings, comments,
  * status changes, file uploads, follow-ups, etc.
+ *
+ * `organizationId` is required — always pass the caller's own tenant (from
+ * utils/tenant.ts's orgId(req)), never derive it from the entity being
+ * described, so an activity can never be filed under the wrong tenant.
  */
 export async function recordActivity(params: ActivityParams) {
   const [activity] = await db
     .insert(activities)
     .values({
+      organizationId: params.organizationId,
       type: params.type,
       description: params.description,
       leadId: params.leadId,

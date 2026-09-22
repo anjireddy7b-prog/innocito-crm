@@ -53,16 +53,21 @@ function resolvePeriodRange(filter?: DashboardSummaryQuery): PeriodRange | null 
   };
 }
 
-export async function getDashboardSummary(filter?: DashboardSummaryQuery) {
+export async function getDashboardSummary(org: string, filter?: DashboardSummaryQuery) {
   const range = resolvePeriodRange(filter);
-  const cacheKey = range ? `dashboard:summary:${range.cacheKeySuffix}` : 'dashboard:summary';
+  // Namespaced by organization — without this, org A's first dashboard load would cache results
+  // that org B's next request would then be served (the exact cross-tenant leak this migration
+  // exists to close). cache.del('dashboard:*') elsewhere still matches every org's keys.
+  const cacheKey = range ? `dashboard:${org}:summary:${range.cacheKeySuffix}` : `dashboard:${org}:summary`;
   const cached = await cache.get(cacheKey);
   if (cached) return cached;
 
+  const orgCond = eq(leads.organizationId, org);
   // Applied to every lead-based query below when a period filter is active; left out entirely
   // (queries computed over all-time data) when it isn't, so the no-filter behavior is unchanged.
+  // Every branch always includes the tenant guard, filter or no filter.
   const leadDateCond = range ? and(gte(leads.createdAt, range.from), lt(leads.createdAt, range.to)) : undefined;
-  const withLeadDate = (...conds: any[]) => (leadDateCond ? and(...conds, leadDateCond) : and(...conds));
+  const withLeadDate = (...conds: any[]) => (leadDateCond ? and(orgCond, ...conds, leadDateCond) : and(orgCond, ...conds));
 
   const [
     [{ value: totalLeads }],
@@ -81,8 +86,11 @@ export async function getDashboardSummary(filter?: DashboardSummaryQuery) {
     db.select({ value: count() }).from(leads).where(withLeadDate(eq(leads.isActive, true))),
     db.select({ value: count() }).from(leads).where(withLeadDate(eq(leads.isActive, true), inArray(leads.status, [...OPEN_OPPORTUNITY_STATUSES]))),
     range
-      ? db.select({ value: count() }).from(meetings).where(and(gte(meetings.scheduledAt, range.from), lt(meetings.scheduledAt, range.to)))
-      : db.select({ value: count() }).from(meetings),
+      ? db
+          .select({ value: count() })
+          .from(meetings)
+          .where(and(eq(meetings.organizationId, org), gte(meetings.scheduledAt, range.from), lt(meetings.scheduledAt, range.to)))
+      : db.select({ value: count() }).from(meetings).where(eq(meetings.organizationId, org)),
     db.select({ value: count() }).from(leads).where(withLeadDate(eq(leads.isActive, true), inArray(leads.status, ['PROPOSAL_SENT', 'NEGOTIATION']))),
     db.select({ value: count() }).from(leads).where(withLeadDate(eq(leads.isActive, true), eq(leads.status, 'WON'))),
     db.select({ value: count() }).from(leads).where(withLeadDate(eq(leads.isActive, true), eq(leads.status, 'LOST'))),
@@ -100,13 +108,16 @@ export async function getDashboardSummary(filter?: DashboardSummaryQuery) {
       : db
           .select({ country: companies.country, value: count() })
           .from(companies)
-          .where(sql`${companies.country} IS NOT NULL`)
+          .where(and(eq(companies.organizationId, org), sql`${companies.country} IS NOT NULL`))
           .groupBy(companies.country)
           .orderBy(sql`count(*) DESC`)
           .limit(10),
-    db.query.campaigns.findMany({ with: { leads: { columns: { status: true, createdAt: true } } } }),
+    db.query.campaigns.findMany({
+      where: eq(campaigns.organizationId, org),
+      with: { leads: { columns: { status: true, createdAt: true } } },
+    }),
     db.query.users.findMany({
-      where: eq(users.isActive, true),
+      where: and(eq(users.organizationId, org), eq(users.isActive, true)),
       with: {
         role: { columns: { name: true } },
         assignedLeads: { columns: { id: true, status: true, createdAt: true } },
@@ -117,13 +128,13 @@ export async function getDashboardSummary(filter?: DashboardSummaryQuery) {
       ? db.execute<{ month: string; count: string }>(sql`
           SELECT to_char(date_trunc('month', "created_at"), 'YYYY-MM') AS month, COUNT(*)::bigint AS count
           FROM leads
-          WHERE "created_at" >= ${range.from} AND "created_at" < ${range.to}
+          WHERE "organization_id" = ${org} AND "created_at" >= ${range.from} AND "created_at" < ${range.to}
           GROUP BY 1 ORDER BY 1 ASC
         `)
       : db.execute<{ month: string; count: string }>(sql`
           SELECT to_char(date_trunc('month', "created_at"), 'YYYY-MM') AS month, COUNT(*)::bigint AS count
           FROM leads
-          WHERE "created_at" > NOW() - INTERVAL '12 months'
+          WHERE "organization_id" = ${org} AND "created_at" > NOW() - INTERVAL '12 months'
           GROUP BY 1 ORDER BY 1 ASC
         `),
   ]);

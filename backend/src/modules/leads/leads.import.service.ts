@@ -7,6 +7,7 @@ import { recordAudit } from '@/utils/auditLogger';
 import { cache } from '@/config/redis';
 import { readSpreadsheetRows, findColumn, parseFlexibleDate, splitName, classifyOutcome } from '@/utils/spreadsheetImport';
 import { normalizeWebsite } from '@/utils/leadFormOptions';
+import { orgId } from '@/utils/tenant';
 
 const LEAD_STATUSES = new Set([
   'NEW', 'CONTACTED', 'QUALIFIED', 'MEETING_SCHEDULED', 'MEETING_DONE', 'DEMO_SCHEDULED',
@@ -29,6 +30,7 @@ function cell(row: (string | number | boolean | Date | null)[], idx: number): st
 }
 
 export async function importLeadsFromFile(req: Request, file: Express.Multer.File): Promise<LeadImportResult> {
+  const org = orgId(req);
   const { headers, rows } = await readSpreadsheetRows(file.buffer, file.originalname, file.mimetype);
 
   const idx = {
@@ -62,7 +64,10 @@ export async function importLeadsFromFile(req: Request, file: Express.Multer.Fil
   }
 
   // Resolve "IST Rep" cell values to existing user accounts by full-name match.
-  const allUsers = await db.query.users.findMany({ columns: { id: true, firstName: true, lastName: true } });
+  const allUsers = await db.query.users.findMany({
+    where: eq(users.organizationId, org),
+    columns: { id: true, firstName: true, lastName: true },
+  });
   const userIdByName = new Map(allUsers.map((u) => [`${u.firstName} ${u.lastName}`.trim().toLowerCase(), u.id]));
 
   const campaignByCode = new Map<string, string>();
@@ -94,12 +99,15 @@ export async function importLeadsFromFile(req: Request, file: Express.Multer.Fil
       // Company — dedupe by name (case-insensitive), same convention used
       // everywhere else in the app (leads.service.ts resolveCompanyAndContact).
       const companyName = companyNameRaw.split(',')[0].trim(); // strip trailing "City, State, USA" some rows include
-      let company = await db.query.companies.findFirst({ where: ilike(companies.name, companyName) });
+      let company = await db.query.companies.findFirst({
+        where: and(eq(companies.organizationId, org), ilike(companies.name, companyName)),
+      });
       if (!company) {
         const revenueRaw = cell(row, idx.revenue).replace(/[^0-9.]/g, '');
         const [createdCompany] = await db
           .insert(companies)
           .values({
+            organizationId: org,
             name: companyName,
             city: cell(row, idx.city) || null,
             state: cell(row, idx.state) || null,
@@ -118,16 +126,24 @@ export async function importLeadsFromFile(req: Request, file: Express.Multer.Fil
       // fresh duplicate contact for the same person every time.
       const emailRaw = cell(row, idx.email);
       const email = emailRaw ? emailRaw.toLowerCase() : null;
-      let contact = email ? await db.query.contacts.findFirst({ where: ilike(contacts.email, email) }) : undefined;
+      let contact = email
+        ? await db.query.contacts.findFirst({ where: and(eq(contacts.organizationId, org), ilike(contacts.email, email)) })
+        : undefined;
       if (!contact && !email) {
         contact = await db.query.contacts.findFirst({
-          where: and(eq(contacts.companyId, company.id), ilike(contacts.firstName, firstName), ilike(contacts.lastName, lastName)),
+          where: and(
+            eq(contacts.organizationId, org),
+            eq(contacts.companyId, company.id),
+            ilike(contacts.firstName, firstName),
+            ilike(contacts.lastName, lastName)
+          ),
         });
       }
       if (!contact) {
         const [createdContact] = await db
           .insert(contacts)
           .values({
+            organizationId: org,
             companyId: company.id,
             firstName,
             lastName,
@@ -148,7 +164,12 @@ export async function importLeadsFromFile(req: Request, file: Express.Multer.Fil
       // already has an active lead — makes it safe to re-import an updated
       // version of the same file without piling up repeat rows.
       const existingLead = await db.query.leads.findFirst({
-        where: and(eq(leads.companyId, company.id), eq(leads.contactId, contact.id), eq(leads.isActive, true)),
+        where: and(
+          eq(leads.organizationId, org),
+          eq(leads.companyId, company.id),
+          eq(leads.contactId, contact.id),
+          eq(leads.isActive, true)
+        ),
       });
       if (existingLead) {
         result.skippedDuplicates += 1;
@@ -160,9 +181,14 @@ export async function importLeadsFromFile(req: Request, file: Express.Multer.Fil
       let campaignId: string | undefined;
       if (campaignCode) {
         if (!campaignByCode.has(campaignCode)) {
-          let campaign = await db.query.campaigns.findFirst({ where: eq(campaigns.code, campaignCode) });
+          let campaign = await db.query.campaigns.findFirst({
+            where: and(eq(campaigns.organizationId, org), eq(campaigns.code, campaignCode)),
+          });
           if (!campaign) {
-            const [createdCampaign] = await db.insert(campaigns).values({ name: campaignCode, code: campaignCode, createdById: req.user!.sub }).returning();
+            const [createdCampaign] = await db
+              .insert(campaigns)
+              .values({ organizationId: org, name: campaignCode, code: campaignCode, createdById: req.user!.sub })
+              .returning();
             campaign = createdCampaign;
           }
           campaignByCode.set(campaignCode, campaign.id);
@@ -183,6 +209,7 @@ export async function importLeadsFromFile(req: Request, file: Express.Multer.Fil
       const [lead] = await db
         .insert(leads)
         .values({
+          organizationId: org,
           companyId: company.id,
           contactId: contact.id,
           campaignId,
@@ -201,6 +228,7 @@ export async function importLeadsFromFile(req: Request, file: Express.Multer.Fil
 
       if (meetingDate) {
         await db.insert(meetings).values({
+          organizationId: org,
           leadId: lead.id,
           title: `Discovery call with ${firstName} ${lastName}`,
           type: meetingType as any,
@@ -212,6 +240,7 @@ export async function importLeadsFromFile(req: Request, file: Express.Multer.Fil
       }
 
       await db.insert(activities).values({
+        organizationId: org,
         type: 'LEAD_CREATED',
         description: `Lead imported from "${file.originalname}" for ${companyName}`,
         leadId: lead.id,

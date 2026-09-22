@@ -1,14 +1,15 @@
 import { Request, Response } from 'express';
 import { asyncHandler } from '@/utils/asyncHandler';
+import { orgId } from '@/utils/tenant';
 import * as usersService from './users.service';
 
 export const list = asyncHandler(async (req: Request, res: Response) => {
-  const result = await usersService.listUsers(req.query as any);
+  const result = await usersService.listUsers(orgId(req), req.query as any);
   res.json({ success: true, ...result });
 });
 
 export const getById = asyncHandler(async (req: Request, res: Response) => {
-  const user = await usersService.getUserById(req.params.id);
+  const user = await usersService.getUserById(orgId(req), req.params.id);
   res.json({ success: true, data: user });
 });
 
@@ -34,6 +35,6 @@ export const resetPassword = asyncHandler(async (req: Request, res: Response) =>
 
 export const assignable = asyncHandler(async (req: Request, res: Response) => {
   const roles = typeof req.query.roles === 'string' ? req.query.roles.split(',') : undefined;
-  const users = await usersService.listAssignableUsers(roles);
+  const users = await usersService.listAssignableUsers(orgId(req), roles);
   res.json({ success: true, data: users });
 });

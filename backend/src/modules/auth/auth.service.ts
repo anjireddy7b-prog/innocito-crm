@@ -36,12 +36,18 @@ export async function login(req: Request, email: string, password: string) {
 
   const validPassword = await argon2.verify(user.passwordHash, password);
   if (!validPassword) {
-    await recordAudit({ req, action: 'LOGIN_FAILED', entityType: 'User', entityId: user.id });
+    await recordAudit({ req, action: 'LOGIN_FAILED', entityType: 'User', entityId: user.id, organizationId: user.organizationId });
     throw ApiError.unauthorized('Invalid email or password');
   }
 
   const permissions = user.role.permissions.map((rp) => rp.permission.key);
-  const accessToken = signAccessToken({ sub: user.id, email: user.email, role: user.role.name, permissions });
+  const accessToken = signAccessToken({
+    sub: user.id,
+    email: user.email,
+    role: user.role.name,
+    permissions,
+    organizationId: user.organizationId,
+  });
 
   const refreshValue = generateRefreshTokenValue();
   await db.insert(refreshTokens).values({
@@ -53,7 +59,7 @@ export async function login(req: Request, email: string, password: string) {
   });
 
   await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id));
-  await recordAudit({ req, action: 'LOGIN', entityType: 'User', entityId: user.id });
+  await recordAudit({ req, action: 'LOGIN', entityType: 'User', entityId: user.id, organizationId: user.organizationId });
 
   const { passwordHash, ...safeUser } = user;
   return {
@@ -90,6 +96,7 @@ export async function refresh(req: Request, refreshTokenValue: string) {
     email: loaded.user.email,
     role: loaded.user.role.name,
     permissions: loaded.permissions,
+    organizationId: loaded.user.organizationId,
   });
 
   return { accessToken, refreshToken: newRefreshValue };

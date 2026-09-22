@@ -8,9 +8,10 @@ import { ApiError } from '@/utils/ApiError';
 import { recordAudit } from '@/utils/auditLogger';
 import { recordActivity } from '@/utils/activityLogger';
 import { env } from '@/config/env';
+import { orgId } from '@/utils/tenant';
 
-export async function listDocuments(query: { leadId?: string; companyId?: string }) {
-  const conditions: SQL[] = [];
+export async function listDocuments(org: string, query: { leadId?: string; companyId?: string }) {
+  const conditions: SQL[] = [eq(documents.organizationId, org)];
   if (query.leadId) conditions.push(eq(documents.leadId, query.leadId));
   if (query.companyId) conditions.push(eq(documents.companyId, query.companyId));
 
@@ -27,10 +28,12 @@ export async function uploadDocument(
   input: { leadId?: string; companyId?: string; documentType?: string }
 ) {
   if (!input.leadId && !input.companyId) throw ApiError.badRequest('A document must be linked to a lead or company');
+  const org = orgId(req);
 
   const [document] = await db
     .insert(documents)
     .values({
+      organizationId: org,
       leadId: input.leadId,
       companyId: input.companyId,
       fileName: file.filename,
@@ -45,6 +48,7 @@ export async function uploadDocument(
 
   if (input.leadId) {
     await recordActivity({
+      organizationId: org,
       type: 'DOCUMENT_UPLOADED',
       description: `Document "${file.originalname}" uploaded`,
       leadId: input.leadId,
@@ -56,7 +60,8 @@ export async function uploadDocument(
 }
 
 export async function deleteDocument(req: Request, id: string) {
-  const doc = await db.query.documents.findFirst({ where: eq(documents.id, id) });
+  const org = orgId(req);
+  const doc = await db.query.documents.findFirst({ where: and(eq(documents.organizationId, org), eq(documents.id, id)) });
   if (!doc) throw ApiError.notFound('Document not found');
 
   const filePath = path.join(path.resolve(env.UPLOAD_DIR), doc.fileName);

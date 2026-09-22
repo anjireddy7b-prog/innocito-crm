@@ -7,8 +7,9 @@ import { recordAudit } from '@/utils/auditLogger';
 import { paginationMeta, toLimitOffset } from '@/utils/pagination';
 import { cache } from '@/config/redis';
 import { normalizeWebsite } from '@/utils/leadFormOptions';
+import { orgId } from '@/utils/tenant';
 
-export async function listCompanies(query: {
+export async function listCompanies(org: string, query: {
   page: number;
   pageSize: number;
   search?: string;
@@ -17,7 +18,7 @@ export async function listCompanies(query: {
   sortBy?: string;
   sortDir: 'asc' | 'desc';
 }) {
-  const conditions: SQL[] = [];
+  const conditions: SQL[] = [eq(companies.organizationId, org)];
   if (query.search) {
     conditions.push(or(ilike(companies.name, `%${query.search}%`), ilike(companies.domain, `%${query.search}%`))!);
   }
@@ -47,9 +48,9 @@ export async function listCompanies(query: {
   return { data: withCounts, meta: paginationMeta(Number(total), query.page, query.pageSize) };
 }
 
-export async function getCompanyById(id: string) {
+export async function getCompanyById(org: string, id: string) {
   const company = await db.query.companies.findFirst({
-    where: eq(companies.id, id),
+    where: and(eq(companies.organizationId, org), eq(companies.id, id)),
     with: {
       contacts: { orderBy: desc(contacts.createdAt) },
       leads: {
@@ -71,9 +72,16 @@ export async function getCompanyById(id: string) {
 }
 
 export async function createCompany(req: Request, input: any) {
+  const org = orgId(req);
   const [company] = await db
     .insert(companies)
-    .values({ ...input, website: normalizeWebsite(input.website), annualRevenue: input.annualRevenue?.toString(), createdById: req.user!.sub })
+    .values({
+      ...input,
+      organizationId: org,
+      website: normalizeWebsite(input.website),
+      annualRevenue: input.annualRevenue?.toString(),
+      createdById: req.user!.sub,
+    })
     .returning();
   await recordAudit({ req, action: 'CREATE', entityType: 'Company', entityId: company.id, newValues: company });
   await cache.del('dashboard:*');
@@ -81,7 +89,8 @@ export async function createCompany(req: Request, input: any) {
 }
 
 export async function updateCompany(req: Request, id: string, input: any) {
-  const before = await db.query.companies.findFirst({ where: eq(companies.id, id) });
+  const org = orgId(req);
+  const before = await db.query.companies.findFirst({ where: and(eq(companies.organizationId, org), eq(companies.id, id)) });
   if (!before) throw ApiError.notFound('Company not found');
   const [company] = await db
     .update(companies)
@@ -98,7 +107,8 @@ export async function updateCompany(req: Request, id: string, input: any) {
 }
 
 export async function deleteCompany(req: Request, id: string) {
-  const before = await db.query.companies.findFirst({ where: eq(companies.id, id) });
+  const org = orgId(req);
+  const before = await db.query.companies.findFirst({ where: and(eq(companies.organizationId, org), eq(companies.id, id)) });
   if (!before) throw ApiError.notFound('Company not found');
   await db.delete(companies).where(eq(companies.id, id));
   await recordAudit({ req, action: 'DELETE', entityType: 'Company', entityId: id, oldValues: before });

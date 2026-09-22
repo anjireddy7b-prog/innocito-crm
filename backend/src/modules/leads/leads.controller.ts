@@ -1,15 +1,16 @@
 import { Request, Response } from 'express';
 import { asyncHandler } from '@/utils/asyncHandler';
 import { ApiError } from '@/utils/ApiError';
+import { orgId } from '@/utils/tenant';
 import * as service from './leads.service';
 import * as importService from './leads.import.service';
 
 export const list = asyncHandler(async (req: Request, res: Response) => {
-  res.json({ success: true, ...(await service.listLeads(req.query as any)) });
+  res.json({ success: true, ...(await service.listLeads(orgId(req), req.query as any)) });
 });
 
 export const getById = asyncHandler(async (req: Request, res: Response) => {
-  res.json({ success: true, data: await service.getLeadById(req.params.id) });
+  res.json({ success: true, data: await service.getLeadById(orgId(req), req.params.id) });
 });
 
 export const create = asyncHandler(async (req: Request, res: Response) => {

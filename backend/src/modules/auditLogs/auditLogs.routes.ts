@@ -8,6 +8,7 @@ import { PERMISSIONS } from '@/utils/permissions';
 import { db } from '@/config/db';
 import { auditLogs } from '@/db/schema';
 import { paginationSchema, paginationMeta, toLimitOffset } from '@/utils/pagination';
+import { orgId } from '@/utils/tenant';
 
 export const auditLogsRouter = Router();
 auditLogsRouter.use(authenticate, requirePermission(PERMISSIONS.AUDIT_LOGS_VIEW));
@@ -23,11 +24,14 @@ auditLogsRouter.get(
   validate(queryVSchema, 'query'),
   asyncHandler(async (req, res) => {
     const { page, pageSize, entityType, action, userId } = req.query as any;
-    const conditions: SQL[] = [];
+    // eq() against a NULL organization_id never matches, so this also correctly excludes the
+    // rare pre-auth audit rows (e.g. LOGIN_FAILED for an unrecognized email) that have no tenant —
+    // those aren't this org's data to show either.
+    const conditions: SQL[] = [eq(auditLogs.organizationId, orgId(req))];
     if (entityType) conditions.push(eq(auditLogs.entityType, entityType));
     if (action) conditions.push(eq(auditLogs.action, action));
     if (userId) conditions.push(eq(auditLogs.userId, userId));
-    const where = conditions.length ? and(...conditions) : undefined;
+    const where = and(...conditions);
 
     const [rows, [{ value: total }]] = await Promise.all([
       db.query.auditLogs.findMany({

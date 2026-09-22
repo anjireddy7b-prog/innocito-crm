@@ -1,14 +1,15 @@
 import { Request, Response } from 'express';
 import { asyncHandler } from '@/utils/asyncHandler';
+import { orgId } from '@/utils/tenant';
 import * as service from './companies.service';
 
 export const list = asyncHandler(async (req: Request, res: Response) => {
-  const result = await service.listCompanies(req.query as any);
+  const result = await service.listCompanies(orgId(req), req.query as any);
   res.json({ success: true, ...result });
 });
 
 export const getById = asyncHandler(async (req: Request, res: Response) => {
-  res.json({ success: true, data: await service.getCompanyById(req.params.id) });
+  res.json({ success: true, data: await service.getCompanyById(orgId(req), req.params.id) });
 });
 
 export const create = asyncHandler(async (req: Request, res: Response) => {

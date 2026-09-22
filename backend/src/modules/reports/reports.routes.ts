@@ -2,7 +2,7 @@ import { Router } from 'express';
 import ExcelJS from 'exceljs';
 import { stringify } from 'csv-stringify/sync';
 import PDFDocument from 'pdfkit';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { authenticate, requirePermission } from '@/middleware/auth';
 import { asyncHandler } from '@/utils/asyncHandler';
 import { PERMISSIONS } from '@/utils/permissions';
@@ -10,13 +10,14 @@ import { db } from '@/config/db';
 import { leads } from '@/db/schema';
 import { formatLeadNumber } from '@/utils/leadNumber';
 import { recordAudit } from '@/utils/auditLogger';
+import { orgId } from '@/utils/tenant';
 
 export const reportsRouter = Router();
 reportsRouter.use(authenticate, requirePermission(PERMISSIONS.REPORTS_EXPORT));
 
-async function fetchLeadsForExport() {
+async function fetchLeadsForExport(org: string) {
   return db.query.leads.findMany({
-    where: eq(leads.isActive, true),
+    where: and(eq(leads.organizationId, org), eq(leads.isActive, true)),
     orderBy: desc(leads.createdAt),
     with: {
       company: { columns: { name: true, country: true, state: true, industry: true, website: true, annualRevenue: true } },
@@ -66,7 +67,7 @@ function toRow(l: Awaited<ReturnType<typeof fetchLeadsForExport>>[number]) {
 reportsRouter.get(
   '/leads/export.csv',
   asyncHandler(async (req, res) => {
-    const leadRows = await fetchLeadsForExport();
+    const leadRows = await fetchLeadsForExport(orgId(req));
     const csv = stringify(leadRows.map(toRow), { header: true });
     await recordAudit({ req, action: 'EXPORT', entityType: 'Lead', newValues: { format: 'csv', count: leadRows.length } });
     res.setHeader('Content-Type', 'text/csv');
@@ -78,7 +79,7 @@ reportsRouter.get(
 reportsRouter.get(
   '/leads/export.xlsx',
   asyncHandler(async (req, res) => {
-    const leadRows = await fetchLeadsForExport();
+    const leadRows = await fetchLeadsForExport(orgId(req));
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Leads');
     const rows = leadRows.map(toRow);
@@ -98,7 +99,7 @@ reportsRouter.get(
 reportsRouter.get(
   '/leads/export.pdf',
   asyncHandler(async (req, res) => {
-    const leadRows = await fetchLeadsForExport();
+    const leadRows = await fetchLeadsForExport(orgId(req));
     await recordAudit({ req, action: 'EXPORT', entityType: 'Lead', newValues: { format: 'pdf', count: leadRows.length } });
 
     res.setHeader('Content-Type', 'application/pdf');

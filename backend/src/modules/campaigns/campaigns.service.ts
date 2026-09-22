@@ -5,8 +5,9 @@ import { campaigns, leads } from '@/db/schema';
 import { ApiError } from '@/utils/ApiError';
 import { recordAudit } from '@/utils/auditLogger';
 import { paginationMeta, toLimitOffset } from '@/utils/pagination';
+import { orgId } from '@/utils/tenant';
 
-export async function listCampaigns(query: {
+export async function listCampaigns(org: string, query: {
   page: number;
   pageSize: number;
   search?: string;
@@ -14,7 +15,7 @@ export async function listCampaigns(query: {
   sortBy?: string;
   sortDir: 'asc' | 'desc';
 }) {
-  const conditions: SQL[] = [];
+  const conditions: SQL[] = [eq(campaigns.organizationId, org)];
   if (query.search) conditions.push(ilike(campaigns.name, `%${query.search}%`));
   if (query.status) conditions.push(eq(campaigns.status, query.status));
   const where = conditions.length ? and(...conditions) : undefined;
@@ -38,9 +39,9 @@ export async function listCampaigns(query: {
   return { data: withCounts, meta: paginationMeta(Number(total), query.page, query.pageSize) };
 }
 
-export async function getCampaignById(id: string) {
+export async function getCampaignById(org: string, id: string) {
   const campaign = await db.query.campaigns.findFirst({
-    where: eq(campaigns.id, id),
+    where: and(eq(campaigns.organizationId, org), eq(campaigns.id, id)),
     with: { leads: { with: { company: true, contact: true }, orderBy: desc(leads.createdAt) } },
   });
   if (!campaign) throw ApiError.notFound('Campaign not found');
@@ -48,16 +49,18 @@ export async function getCampaignById(id: string) {
 }
 
 export async function createCampaign(req: Request, input: any) {
+  const org = orgId(req);
   const [campaign] = await db
     .insert(campaigns)
-    .values({ ...input, budget: input.budget?.toString(), createdById: req.user!.sub })
+    .values({ ...input, organizationId: org, budget: input.budget?.toString(), createdById: req.user!.sub })
     .returning();
   await recordAudit({ req, action: 'CREATE', entityType: 'Campaign', entityId: campaign.id, newValues: campaign });
   return campaign;
 }
 
 export async function updateCampaign(req: Request, id: string, input: any) {
-  const before = await db.query.campaigns.findFirst({ where: eq(campaigns.id, id) });
+  const org = orgId(req);
+  const before = await db.query.campaigns.findFirst({ where: and(eq(campaigns.organizationId, org), eq(campaigns.id, id)) });
   if (!before) throw ApiError.notFound('Campaign not found');
   const [campaign] = await db
     .update(campaigns)
@@ -69,7 +72,8 @@ export async function updateCampaign(req: Request, id: string, input: any) {
 }
 
 export async function deleteCampaign(req: Request, id: string) {
-  const before = await db.query.campaigns.findFirst({ where: eq(campaigns.id, id) });
+  const org = orgId(req);
+  const before = await db.query.campaigns.findFirst({ where: and(eq(campaigns.organizationId, org), eq(campaigns.id, id)) });
   if (!before) throw ApiError.notFound('Campaign not found');
   await db.delete(campaigns).where(eq(campaigns.id, id));
   await recordAudit({ req, action: 'DELETE', entityType: 'Campaign', entityId: id, oldValues: before });

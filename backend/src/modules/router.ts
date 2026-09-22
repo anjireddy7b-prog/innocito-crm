@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authRouter } from './auth/auth.routes';
+import { organizationsRouter } from './organizations/organizations.routes';
 import { usersRouter } from './users/users.routes';
 import { rolesRouter } from './roles/roles.routes';
 import { companiesRouter } from './companies/companies.routes';
@@ -20,6 +21,7 @@ import { reportsRouter } from './reports/reports.routes';
 export const apiRouter = Router();
 
 apiRouter.use('/auth', authRouter);
+apiRouter.use('/organizations', organizationsRouter);
 apiRouter.use('/users', usersRouter);
 apiRouter.use('/roles', rolesRouter);
 apiRouter.use('/companies', companiesRouter);

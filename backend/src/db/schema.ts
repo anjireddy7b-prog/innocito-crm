@@ -51,6 +51,28 @@ export const auditActionEnum = pgEnum('audit_action', [
 ]);
 
 // ----------------------------------------------------------------------------
+// Multi-tenancy
+// ----------------------------------------------------------------------------
+// Phase 1 of the SaaS migration: every tenant-scoped table below carries an
+// `organizationId` column, enforced by the shared query-scoping guard in
+// utils/tenant.ts. This table is intentionally minimal for Phase 1 — dynamic
+// per-organization RBAC, billing/plan fields, and feature flags are later
+// phases (see the Architecture Report) and are NOT added here so this step
+// stays a pure, low-risk "add tenancy" change.
+export const organizations = pgTable(
+  'organizations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: varchar('name', { length: 200 }).notNull(),
+    slug: varchar('slug', { length: 100 }).notNull().unique(),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [index('organizations_is_active_idx').on(t.isActive)]
+);
+
+// ----------------------------------------------------------------------------
 // Identity / Access
 // ----------------------------------------------------------------------------
 export const roles = pgTable('roles', {
@@ -81,6 +103,10 @@ export const users = pgTable(
   'users',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    // Every existing row was backfilled onto a seeded default organization before this was made
+    // NOT NULL (Phase 1 steps 1-3 — see db/migrations/0006_.../0007_.../0008_... and the
+    // Architecture Report's Migration Plan).
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
     email: varchar('email', { length: 255 }).notNull().unique(),
     passwordHash: text('password_hash').notNull(),
     firstName: varchar('first_name', { length: 100 }).notNull(),
@@ -96,7 +122,12 @@ export const users = pgTable(
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },
-  (t) => [index('users_role_id_idx').on(t.roleId), index('users_is_active_idx').on(t.isActive)]
+  (t) => [
+    index('users_role_id_idx').on(t.roleId),
+    index('users_is_active_idx').on(t.isActive),
+    index('users_org_idx').on(t.organizationId),
+    index('users_org_email_idx').on(t.organizationId, t.email),
+  ]
 );
 
 export const refreshTokens = pgTable(
@@ -121,6 +152,7 @@ export const companies = pgTable(
   'companies',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
     name: varchar('name', { length: 255 }).notNull(),
     domain: varchar('domain', { length: 255 }),
     website: varchar('website', { length: 255 }),
@@ -143,6 +175,8 @@ export const companies = pgTable(
     index('companies_name_idx').on(t.name),
     index('companies_domain_idx').on(t.domain),
     index('companies_country_idx').on(t.country),
+    index('companies_org_idx').on(t.organizationId),
+    index('companies_org_created_idx').on(t.organizationId, t.createdAt),
   ]
 );
 
@@ -150,6 +184,7 @@ export const contacts = pgTable(
   'contacts',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
     companyId: uuid('company_id').references(() => companies.id, { onDelete: 'set null' }),
     firstName: varchar('first_name', { length: 150 }).notNull(),
     lastName: varchar('last_name', { length: 150 }).notNull(),
@@ -170,6 +205,8 @@ export const contacts = pgTable(
     index('contacts_company_id_idx').on(t.companyId),
     index('contacts_email_idx').on(t.email),
     index('contacts_name_idx').on(t.lastName, t.firstName),
+    index('contacts_org_idx').on(t.organizationId),
+    index('contacts_org_email_idx').on(t.organizationId, t.email),
   ]
 );
 
@@ -177,6 +214,7 @@ export const campaigns = pgTable(
   'campaigns',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
     name: varchar('name', { length: 200 }).notNull(),
     code: varchar('code', { length: 20 }).unique(),
     description: text('description'),
@@ -188,13 +226,20 @@ export const campaigns = pgTable(
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },
-  (t) => [index('campaigns_status_idx').on(t.status)]
+  (t) => [
+    index('campaigns_status_idx').on(t.status),
+    index('campaigns_org_idx').on(t.organizationId),
+    // NOTE: campaigns.code stays globally unique in Phase 1 (this is a low-risk, additive step —
+    // narrowing it to a per-organization unique constraint is deferred to when a second real
+    // organization is onboarded, per the migration plan's incremental-change rule).
+  ]
 );
 
 export const leads = pgTable(
   'leads',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
     leadNumber: integer('lead_number').notNull().unique().generatedAlwaysAsIdentity(),
     companyId: uuid('company_id').references(() => companies.id, { onDelete: 'set null' }),
     contactId: uuid('contact_id').references(() => contacts.id, { onDelete: 'set null' }),
@@ -257,6 +302,12 @@ export const leads = pgTable(
     index('leads_created_at_idx').on(t.createdAt),
     index('leads_priority_idx').on(t.priority),
     index('leads_received_date_idx').on(t.leadReceivedDate),
+    // Tenant-aware composite indexes (Architecture Report section K / 55) — the shapes every
+    // org-scoped list/dashboard query actually filters+sorts by.
+    index('leads_org_idx').on(t.organizationId),
+    index('leads_org_created_idx').on(t.organizationId, t.createdAt),
+    index('leads_org_owner_idx').on(t.organizationId, t.currentOwnerId),
+    index('leads_org_status_idx').on(t.organizationId, t.status),
   ]
 );
 
@@ -267,6 +318,7 @@ export const meetings = pgTable(
   'meetings',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
     leadId: uuid('lead_id').notNull().references(() => leads.id, { onDelete: 'cascade' }),
     title: varchar('title', { length: 255 }).notNull(),
     type: meetingTypeEnum('type').notNull().default('DISCOVERY'),
@@ -288,6 +340,7 @@ export const meetings = pgTable(
     index('meetings_lead_id_idx').on(t.leadId),
     index('meetings_scheduled_at_idx').on(t.scheduledAt),
     index('meetings_status_idx').on(t.status),
+    index('meetings_org_idx').on(t.organizationId),
   ]
 );
 
@@ -295,6 +348,7 @@ export const tasks = pgTable(
   'tasks',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
     leadId: uuid('lead_id').references(() => leads.id, { onDelete: 'cascade' }),
     title: varchar('title', { length: 255 }).notNull(),
     description: text('description'),
@@ -312,6 +366,7 @@ export const tasks = pgTable(
     index('tasks_assigned_to_idx').on(t.assignedToId),
     index('tasks_status_idx').on(t.status),
     index('tasks_due_date_idx').on(t.dueDate),
+    index('tasks_org_idx').on(t.organizationId),
   ]
 );
 
@@ -319,6 +374,7 @@ export const documents = pgTable(
   'documents',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
     leadId: uuid('lead_id').references(() => leads.id, { onDelete: 'cascade' }),
     companyId: uuid('company_id').references(() => companies.id, { onDelete: 'cascade' }),
     fileName: varchar('file_name', { length: 255 }).notNull(),
@@ -330,26 +386,32 @@ export const documents = pgTable(
     uploadedById: uuid('uploaded_by_id').references(() => users.id),
     createdAt: timestamp('created_at').notNull().defaultNow(),
   },
-  (t) => [index('documents_lead_id_idx').on(t.leadId), index('documents_company_id_idx').on(t.companyId)]
+  (t) => [
+    index('documents_lead_id_idx').on(t.leadId),
+    index('documents_company_id_idx').on(t.companyId),
+    index('documents_org_idx').on(t.organizationId),
+  ]
 );
 
 export const comments = pgTable(
   'comments',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
     leadId: uuid('lead_id').notNull().references(() => leads.id, { onDelete: 'cascade' }),
     userId: uuid('user_id').notNull().references(() => users.id),
     body: text('body').notNull(),
     editedAt: timestamp('edited_at'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
   },
-  (t) => [index('comments_lead_id_idx').on(t.leadId)]
+  (t) => [index('comments_lead_id_idx').on(t.leadId), index('comments_org_idx').on(t.organizationId)]
 );
 
 export const activities = pgTable(
   'activities',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
     type: activityTypeEnum('type').notNull(),
     description: text('description').notNull(),
     metadata: jsonb('metadata'),
@@ -364,6 +426,7 @@ export const activities = pgTable(
     index('activities_company_idx').on(t.companyId),
     index('activities_contact_idx').on(t.contactId),
     index('activities_type_idx').on(t.type),
+    index('activities_org_idx').on(t.organizationId),
   ]
 );
 
@@ -371,6 +434,7 @@ export const notifications = pgTable(
   'notifications',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
     userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     type: notificationTypeEnum('type').notNull(),
     title: varchar('title', { length: 255 }).notNull(),
@@ -379,13 +443,21 @@ export const notifications = pgTable(
     leadId: uuid('lead_id').references(() => leads.id, { onDelete: 'cascade' }),
     createdAt: timestamp('created_at').notNull().defaultNow(),
   },
-  (t) => [index('notifications_user_read_idx').on(t.userId, t.isRead), index('notifications_created_at_idx').on(t.createdAt)]
+  (t) => [
+    index('notifications_user_read_idx').on(t.userId, t.isRead),
+    index('notifications_created_at_idx').on(t.createdAt),
+    index('notifications_org_idx').on(t.organizationId),
+  ]
 );
 
 export const auditLogs = pgTable(
   'audit_logs',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    // Nullable, unlike every other tenant-scoped table: a LOGIN_FAILED entry for an email that
+    // doesn't belong to any known user has no tenant to attach to yet. Every audit row written
+    // from an authenticated context still gets one — see utils/auditLogger.ts.
+    organizationId: uuid('organization_id').references(() => organizations.id),
     userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
     action: auditActionEnum('action').notNull(),
     entityType: varchar('entity_type', { length: 100 }).notNull(),
@@ -400,12 +472,21 @@ export const auditLogs = pgTable(
     index('audit_logs_entity_idx').on(t.entityType, t.entityId),
     index('audit_logs_user_idx').on(t.userId),
     index('audit_logs_created_at_idx').on(t.createdAt),
+    index('audit_logs_org_idx').on(t.organizationId),
   ]
 );
 
 // ----------------------------------------------------------------------------
 // Relations (powers Drizzle's relational query API: db.query.leads.findMany({with:{...}}))
 // ----------------------------------------------------------------------------
+export const organizationsRelations = relations(organizations, ({ many }) => ({
+  users: many(users),
+  companies: many(companies),
+  contacts: many(contacts),
+  leads: many(leads),
+  campaigns: many(campaigns),
+}));
+
 export const rolesRelations = relations(roles, ({ many }) => ({
   permissions: many(rolePermissions),
   users: many(users),
@@ -421,6 +502,7 @@ export const rolePermissionsRelations = relations(rolePermissions, ({ one }) => 
 }));
 
 export const usersRelations = relations(users, ({ one, many }) => ({
+  organization: one(organizations, { fields: [users.organizationId], references: [organizations.id] }),
   role: one(roles, { fields: [users.roleId], references: [roles.id] }),
   createdBy: one(users, { fields: [users.createdById], references: [users.id], relationName: 'userCreatedBy' }),
   refreshTokens: many(refreshTokens),
@@ -430,7 +512,8 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   createdBySdrLeads: many(leads, { relationName: 'leadCreatedBySdr' }),
 }));
 
-export const companiesRelations = relations(companies, ({ many }) => ({
+export const companiesRelations = relations(companies, ({ one, many }) => ({
+  organization: one(organizations, { fields: [companies.organizationId], references: [organizations.id] }),
   contacts: many(contacts),
   leads: many(leads),
   documents: many(documents),
@@ -438,16 +521,19 @@ export const companiesRelations = relations(companies, ({ many }) => ({
 }));
 
 export const contactsRelations = relations(contacts, ({ one, many }) => ({
+  organization: one(organizations, { fields: [contacts.organizationId], references: [organizations.id] }),
   company: one(companies, { fields: [contacts.companyId], references: [companies.id] }),
   leads: many(leads),
   activities: many(activities),
 }));
 
-export const campaignsRelations = relations(campaigns, ({ many }) => ({
+export const campaignsRelations = relations(campaigns, ({ one, many }) => ({
+  organization: one(organizations, { fields: [campaigns.organizationId], references: [organizations.id] }),
   leads: many(leads),
 }));
 
 export const leadsRelations = relations(leads, ({ one, many }) => ({
+  organization: one(organizations, { fields: [leads.organizationId], references: [organizations.id] }),
   company: one(companies, { fields: [leads.companyId], references: [companies.id] }),
   contact: one(contacts, { fields: [leads.contactId], references: [contacts.id] }),
   campaign: one(campaigns, { fields: [leads.campaignId], references: [campaigns.id] }),

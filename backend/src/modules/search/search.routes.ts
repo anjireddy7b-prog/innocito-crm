@@ -6,6 +6,7 @@ import { db } from '@/config/db';
 import { leads, companies, contacts, campaigns, users } from '@/db/schema';
 import { formatLeadNumber, parseLeadNumber } from '@/utils/leadNumber';
 import { ApiError } from '@/utils/ApiError';
+import { orgId } from '@/utils/tenant';
 
 export const searchRouter = Router();
 searchRouter.use(authenticate);
@@ -18,6 +19,7 @@ searchRouter.use(authenticate);
 searchRouter.get(
   '/',
   asyncHandler(async (req, res) => {
+    const org = orgId(req);
     const q = String(req.query.q ?? '').trim();
     if (q.length < 2) throw ApiError.badRequest('Search query must be at least 2 characters');
     const term = `%${q}%`;
@@ -38,6 +40,7 @@ searchRouter.get(
         .leftJoin(contacts, eq(leads.contactId, contacts.id))
         .where(
           and(
+            eq(leads.organizationId, org),
             eq(leads.isActive, true),
             or(
               ...(leadNumber !== null ? [eq(leads.leadNumber, leadNumber)] : []),
@@ -53,17 +56,27 @@ searchRouter.get(
         )
         .limit(8),
       db.query.companies.findMany({
-        where: or(ilike(companies.name, term), ilike(companies.domain, term), ilike(companies.country, term), ilike(companies.industry, term), ilike(companies.website, term)),
+        where: and(
+          eq(companies.organizationId, org),
+          or(ilike(companies.name, term), ilike(companies.domain, term), ilike(companies.country, term), ilike(companies.industry, term), ilike(companies.website, term))
+        ),
         limit: 6,
       }),
       db.query.contacts.findMany({
-        where: or(ilike(contacts.firstName, term), ilike(contacts.lastName, term), ilike(contacts.email, term), ilike(contacts.phone, term)),
+        where: and(
+          eq(contacts.organizationId, org),
+          or(ilike(contacts.firstName, term), ilike(contacts.lastName, term), ilike(contacts.email, term), ilike(contacts.phone, term))
+        ),
         limit: 6,
         with: { company: { columns: { name: true } } },
       }),
-      db.query.campaigns.findMany({ where: or(ilike(campaigns.name, term), ilike(campaigns.code, term)), limit: 5 }),
+      db.query.campaigns.findMany({
+        where: and(eq(campaigns.organizationId, org), or(ilike(campaigns.name, term), ilike(campaigns.code, term))),
+        limit: 5,
+      }),
       db.query.users.findMany({
         where: and(
+          eq(users.organizationId, org),
           eq(users.isActive, true),
           or(ilike(users.firstName, term), ilike(users.lastName, term), ilike(users.email, term))
         ),

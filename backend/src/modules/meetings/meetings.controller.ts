@@ -1,9 +1,10 @@
 import { Request, Response } from 'express';
 import { asyncHandler } from '@/utils/asyncHandler';
+import { orgId } from '@/utils/tenant';
 import * as service from './meetings.service';
 
 export const list = asyncHandler(async (req: Request, res: Response) => {
-  res.json({ success: true, data: await service.listMeetings(req.query as any) });
+  res.json({ success: true, data: await service.listMeetings(orgId(req), req.query as any) });
 });
 export const create = asyncHandler(async (req: Request, res: Response) => {
   res.status(201).json({ success: true, data: await service.createMeeting(req, req.body) });

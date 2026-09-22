@@ -17,9 +17,9 @@
 import path from 'path';
 import argon2 from 'argon2';
 import ExcelJS from 'exceljs';
-import { eq, count } from 'drizzle-orm';
+import { and, eq, count } from 'drizzle-orm';
 import { db, pool } from '@/config/db';
-import { roles, permissions, rolePermissions, users, companies, contacts, campaigns, leads, meetings, activities } from '@/db/schema';
+import { organizations, roles, permissions, rolePermissions, users, companies, contacts, campaigns, leads, meetings, activities } from '@/db/schema';
 import { ALL_PERMISSIONS, ROLE_PERMISSIONS, PERMISSIONS } from '@/utils/permissions';
 import { env } from '@/config/env';
 import { logger } from '@/config/logger';
@@ -48,6 +48,19 @@ const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   [PERMISSIONS.SETTINGS_MANAGE]: 'Manage system settings',
   [PERMISSIONS.ROLES_VIEW]: 'View roles & permissions',
 };
+
+/**
+ * Every fresh seed needs a tenant to attach its data to. This mirrors exactly what the Phase 1
+ * multi-tenancy migration (db/migrations/0007_backfill_default_organization.sql) did for the
+ * already-running production database, so a brand-new dev/test database ends up in the same
+ * shape: one "default" organization owning everything the seed creates.
+ */
+async function ensureDefaultOrganization() {
+  const existing = await db.query.organizations.findFirst({ where: eq(organizations.slug, 'default') });
+  if (existing) return existing;
+  const [created] = await db.insert(organizations).values({ name: 'SDR ReachOut', slug: 'default' }).returning();
+  return created;
+}
 
 async function seedRolesAndPermissions() {
   logger.info('Seeding permissions & roles...');
@@ -98,6 +111,7 @@ async function ensureUser(input: {
   lastName: string;
   roleName: string;
   password: string;
+  organizationId: string;
 }) {
   const existing = await db.query.users.findFirst({ where: eq(users.email, input.email) });
   if (existing) return existing;
@@ -109,6 +123,7 @@ async function ensureUser(input: {
   const [user] = await db
     .insert(users)
     .values({
+      organizationId: input.organizationId,
       email: input.email,
       firstName: input.firstName,
       lastName: input.lastName,
@@ -137,7 +152,7 @@ function slugifyEmail(name: string): string {
 // Spreadsheet import
 // ---------------------------------------------------------------------------
 
-async function seedLeadsFromSpreadsheet(adminId: string, repIdByName: Map<string, string>) {
+async function seedLeadsFromSpreadsheet(organizationId: string, adminId: string, repIdByName: Map<string, string>) {
   const [{ value: existingLeadCount }] = await db.select({ value: count() }).from(leads);
   if (Number(existingLeadCount) > 0) {
     logger.info('Leads already present — skipping spreadsheet import.');
@@ -186,11 +201,14 @@ async function seedLeadsFromSpreadsheet(adminId: string, repIdByName: Map<string
 
     // Company (dedupe by name, case-insensitive)
     const companyNameStr = String(companyName).split(',')[0].trim(); // strip "City, State, USA" appended to a few rows
-    let company = await db.query.companies.findFirst({ where: eq(companies.name, companyNameStr) });
+    let company = await db.query.companies.findFirst({
+      where: and(eq(companies.organizationId, organizationId), eq(companies.name, companyNameStr)),
+    });
     if (!company) {
       const [createdCompany] = await db
         .insert(companies)
         .values({
+          organizationId,
           name: companyNameStr,
           city: get(idx.city) ? String(get(idx.city)) : null,
           state: get(idx.state) ? String(get(idx.state)) : null,
@@ -204,11 +222,14 @@ async function seedLeadsFromSpreadsheet(adminId: string, repIdByName: Map<string
     // Contact
     const emailRaw = get(idx.email);
     const email = emailRaw ? String(emailRaw).trim().toLowerCase() : null;
-    let contact = email ? await db.query.contacts.findFirst({ where: eq(contacts.email, email) }) : undefined;
+    let contact = email
+      ? await db.query.contacts.findFirst({ where: and(eq(contacts.organizationId, organizationId), eq(contacts.email, email)) })
+      : undefined;
     if (!contact) {
       const [createdContact] = await db
         .insert(contacts)
         .values({
+          organizationId,
           companyId: company.id,
           firstName,
           lastName,
@@ -229,11 +250,13 @@ async function seedLeadsFromSpreadsheet(adminId: string, repIdByName: Map<string
     let campaignId: string | undefined;
     if (campaignCode) {
       if (!campaignByCode.has(campaignCode)) {
-        let campaign = await db.query.campaigns.findFirst({ where: eq(campaigns.code, campaignCode) });
+        let campaign = await db.query.campaigns.findFirst({
+          where: and(eq(campaigns.organizationId, organizationId), eq(campaigns.code, campaignCode)),
+        });
         if (!campaign) {
           const [createdCampaign] = await db
             .insert(campaigns)
-            .values({ name: campaignCode, code: campaignCode, createdById: adminId })
+            .values({ organizationId, name: campaignCode, code: campaignCode, createdById: adminId })
             .returning();
           campaign = createdCampaign;
         }
@@ -252,6 +275,7 @@ async function seedLeadsFromSpreadsheet(adminId: string, repIdByName: Map<string
     const [lead] = await db
       .insert(leads)
       .values({
+        organizationId,
         companyId: company.id,
         contactId: contact.id,
         campaignId,
@@ -267,6 +291,7 @@ async function seedLeadsFromSpreadsheet(adminId: string, repIdByName: Map<string
 
     if (meetingDate) {
       await db.insert(meetings).values({
+        organizationId,
         leadId: lead.id,
         title: `Discovery call with ${firstName} ${lastName}`,
         type: meetingType as any,
@@ -278,6 +303,7 @@ async function seedLeadsFromSpreadsheet(adminId: string, repIdByName: Map<string
     }
 
     await db.insert(activities).values({
+      organizationId,
       type: 'LEAD_CREATED',
       description: `Lead imported from legacy spreadsheet for ${companyNameStr}`,
       leadId: lead.id,
@@ -292,6 +318,7 @@ async function seedLeadsFromSpreadsheet(adminId: string, repIdByName: Map<string
 }
 
 async function main() {
+  const organization = await ensureDefaultOrganization();
   await seedRolesAndPermissions();
 
   const admin = await ensureUser({
@@ -300,6 +327,7 @@ async function main() {
     lastName: 'Admin',
     roleName: 'ADMIN',
     password: env.SEED_ADMIN_PASSWORD,
+    organizationId: organization.id,
   });
   logger.info(`Admin ready: ${admin.email}`);
 
@@ -310,7 +338,7 @@ async function main() {
     { email: 'management@innocito.com', firstName: 'Management', lastName: 'User', roleName: 'MANAGEMENT' },
   ];
   for (const u of demoDefaults) {
-    await ensureUser({ ...u, password: 'Welcome@123' });
+    await ensureUser({ ...u, password: 'Welcome@123', organizationId: organization.id });
   }
 
   // Inside Sales reps found in the legacy spreadsheet
@@ -324,11 +352,12 @@ async function main() {
       lastName,
       roleName: 'INSIDE_SALES',
       password: 'Welcome@123',
+      organizationId: organization.id,
     });
     repIdByName.set(repName, user.id);
   }
 
-  await seedLeadsFromSpreadsheet(admin.id, repIdByName);
+  await seedLeadsFromSpreadsheet(organization.id, admin.id, repIdByName);
 
   logger.info('✅ Seed complete.');
   logger.info(`Admin login: ${env.SEED_ADMIN_EMAIL} / ${env.SEED_ADMIN_PASSWORD}`);

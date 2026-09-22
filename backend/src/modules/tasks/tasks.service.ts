@@ -6,9 +6,10 @@ import { ApiError } from '@/utils/ApiError';
 import { recordAudit } from '@/utils/auditLogger';
 import { recordActivity } from '@/utils/activityLogger';
 import { notifyUser } from '@/utils/notifier';
+import { orgId } from '@/utils/tenant';
 
-export async function listTasks(query: { leadId?: string; assignedToId?: string; status?: string; overdue?: boolean }) {
-  const conditions: SQL[] = [];
+export async function listTasks(org: string, query: { leadId?: string; assignedToId?: string; status?: string; overdue?: boolean }) {
+  const conditions: SQL[] = [eq(tasks.organizationId, org)];
   if (query.leadId) conditions.push(eq(tasks.leadId, query.leadId));
   if (query.assignedToId) conditions.push(eq(tasks.assignedToId, query.assignedToId));
   if (query.status) conditions.push(inArray(tasks.status, query.status.split(',') as any));
@@ -28,9 +29,10 @@ export async function listTasks(query: { leadId?: string; assignedToId?: string;
 }
 
 export async function createTask(req: Request, input: any) {
-  const [task] = await db.insert(tasks).values({ ...input, createdById: req.user!.sub }).returning();
+  const org = orgId(req);
+  const [task] = await db.insert(tasks).values({ ...input, organizationId: org, createdById: req.user!.sub }).returning();
   if (task.leadId) {
-    await recordActivity({ type: 'TASK_CREATED', description: `Task "${task.title}" created`, leadId: task.leadId, userId: req.user!.sub });
+    await recordActivity({ organizationId: org, type: 'TASK_CREATED', description: `Task "${task.title}" created`, leadId: task.leadId, userId: req.user!.sub });
   }
   if (task.assignedToId) {
     await notifyUser({
@@ -46,7 +48,8 @@ export async function createTask(req: Request, input: any) {
 }
 
 export async function updateTask(req: Request, id: string, input: any) {
-  const before = await db.query.tasks.findFirst({ where: eq(tasks.id, id) });
+  const org = orgId(req);
+  const before = await db.query.tasks.findFirst({ where: and(eq(tasks.organizationId, org), eq(tasks.id, id)) });
   if (!before) throw ApiError.notFound('Task not found');
 
   const data: any = { ...input, updatedAt: new Date() };
@@ -55,14 +58,15 @@ export async function updateTask(req: Request, id: string, input: any) {
   const [task] = await db.update(tasks).set(data).where(eq(tasks.id, id)).returning();
 
   if (task.leadId && input.status === 'COMPLETED' && before.status !== 'COMPLETED') {
-    await recordActivity({ type: 'TASK_COMPLETED', description: `Task "${task.title}" completed`, leadId: task.leadId, userId: req.user!.sub });
+    await recordActivity({ organizationId: org, type: 'TASK_COMPLETED', description: `Task "${task.title}" completed`, leadId: task.leadId, userId: req.user!.sub });
   }
   await recordAudit({ req, action: 'UPDATE', entityType: 'Task', entityId: id, oldValues: before, newValues: task });
   return task;
 }
 
 export async function deleteTask(req: Request, id: string) {
-  const before = await db.query.tasks.findFirst({ where: eq(tasks.id, id) });
+  const org = orgId(req);
+  const before = await db.query.tasks.findFirst({ where: and(eq(tasks.organizationId, org), eq(tasks.id, id)) });
   if (!before) throw ApiError.notFound('Task not found');
   await db.delete(tasks).where(eq(tasks.id, id));
   await recordAudit({ req, action: 'DELETE', entityType: 'Task', entityId: id, oldValues: before });

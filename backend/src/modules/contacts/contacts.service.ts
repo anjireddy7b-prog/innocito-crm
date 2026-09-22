@@ -5,8 +5,9 @@ import { contacts, leads } from '@/db/schema';
 import { ApiError } from '@/utils/ApiError';
 import { recordAudit } from '@/utils/auditLogger';
 import { paginationMeta, toLimitOffset } from '@/utils/pagination';
+import { orgId } from '@/utils/tenant';
 
-export async function listContacts(query: {
+export async function listContacts(org: string, query: {
   page: number;
   pageSize: number;
   search?: string;
@@ -14,7 +15,7 @@ export async function listContacts(query: {
   sortBy?: string;
   sortDir: 'asc' | 'desc';
 }) {
-  const conditions: SQL[] = [];
+  const conditions: SQL[] = [eq(contacts.organizationId, org)];
   if (query.search) {
     conditions.push(
       or(
@@ -44,9 +45,9 @@ export async function listContacts(query: {
   return { data: rows, meta: paginationMeta(Number(total), query.page, query.pageSize) };
 }
 
-export async function getContactById(id: string) {
+export async function getContactById(org: string, id: string) {
   const contact = await db.query.contacts.findFirst({
-    where: eq(contacts.id, id),
+    where: and(eq(contacts.organizationId, org), eq(contacts.id, id)),
     with: { company: true, leads: { orderBy: desc(leads.createdAt) } },
   });
   if (!contact) throw ApiError.notFound('Contact not found');
@@ -54,16 +55,18 @@ export async function getContactById(id: string) {
 }
 
 export async function createContact(req: Request, input: any) {
+  const org = orgId(req);
   const [contact] = await db
     .insert(contacts)
-    .values({ ...input, email: input.email || null, createdById: req.user!.sub })
+    .values({ ...input, organizationId: org, email: input.email || null, createdById: req.user!.sub })
     .returning();
   await recordAudit({ req, action: 'CREATE', entityType: 'Contact', entityId: contact.id, newValues: contact });
   return contact;
 }
 
 export async function updateContact(req: Request, id: string, input: any) {
-  const before = await db.query.contacts.findFirst({ where: eq(contacts.id, id) });
+  const org = orgId(req);
+  const before = await db.query.contacts.findFirst({ where: and(eq(contacts.organizationId, org), eq(contacts.id, id)) });
   if (!before) throw ApiError.notFound('Contact not found');
   const [contact] = await db
     .update(contacts)
@@ -75,7 +78,8 @@ export async function updateContact(req: Request, id: string, input: any) {
 }
 
 export async function deleteContact(req: Request, id: string) {
-  const before = await db.query.contacts.findFirst({ where: eq(contacts.id, id) });
+  const org = orgId(req);
+  const before = await db.query.contacts.findFirst({ where: and(eq(contacts.organizationId, org), eq(contacts.id, id)) });
   if (!before) throw ApiError.notFound('Contact not found');
   await db.delete(contacts).where(eq(contacts.id, id));
   await recordAudit({ req, action: 'DELETE', entityType: 'Contact', entityId: id, oldValues: before });

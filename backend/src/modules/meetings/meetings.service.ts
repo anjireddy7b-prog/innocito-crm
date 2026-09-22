@@ -5,9 +5,10 @@ import { meetings, leads } from '@/db/schema';
 import { ApiError } from '@/utils/ApiError';
 import { recordAudit } from '@/utils/auditLogger';
 import { recordActivity } from '@/utils/activityLogger';
+import { orgId } from '@/utils/tenant';
 
-export async function listMeetings(query: { leadId?: string; upcoming?: boolean; from?: Date; to?: Date }) {
-  const conditions: SQL[] = [];
+export async function listMeetings(org: string, query: { leadId?: string; upcoming?: boolean; from?: Date; to?: Date }) {
+  const conditions: SQL[] = [eq(meetings.organizationId, org)];
   if (query.leadId) conditions.push(eq(meetings.leadId, query.leadId));
   if (query.upcoming) {
     conditions.push(gte(meetings.scheduledAt, new Date()));
@@ -24,16 +25,18 @@ export async function listMeetings(query: { leadId?: string; upcoming?: boolean;
 }
 
 export async function createMeeting(req: Request, input: any) {
-  const lead = await db.query.leads.findFirst({ where: eq(leads.id, input.leadId) });
+  const org = orgId(req);
+  const lead = await db.query.leads.findFirst({ where: and(eq(leads.organizationId, org), eq(leads.id, input.leadId)) });
   if (!lead) throw ApiError.notFound('Lead not found');
 
-  const [meeting] = await db.insert(meetings).values({ ...input, createdById: req.user!.sub }).returning();
+  const [meeting] = await db.insert(meetings).values({ ...input, organizationId: org, createdById: req.user!.sub }).returning();
 
   if (['NEW', 'CONTACTED', 'QUALIFIED'].includes(lead.status)) {
     await db.update(leads).set({ status: 'MEETING_SCHEDULED', updatedAt: new Date() }).where(eq(leads.id, lead.id));
   }
 
   await recordActivity({
+    organizationId: org,
     type: 'MEETING_SCHEDULED',
     description: `Meeting "${meeting.title}" scheduled for ${meeting.scheduledAt.toDateString()}`,
     leadId: lead.id,
@@ -45,22 +48,24 @@ export async function createMeeting(req: Request, input: any) {
 }
 
 export async function updateMeeting(req: Request, id: string, input: any) {
-  const before = await db.query.meetings.findFirst({ where: eq(meetings.id, id) });
+  const org = orgId(req);
+  const before = await db.query.meetings.findFirst({ where: and(eq(meetings.organizationId, org), eq(meetings.id, id)) });
   if (!before) throw ApiError.notFound('Meeting not found');
 
   const [meeting] = await db.update(meetings).set({ ...input, updatedAt: new Date() }).where(eq(meetings.id, id)).returning();
 
   if (input.status === 'COMPLETED' && before.status !== 'COMPLETED') {
     await recordActivity({
+      organizationId: org,
       type: 'MEETING_COMPLETED',
       description: `Meeting "${meeting.title}" completed${meeting.mom ? ' with MoM recorded' : ''}`,
       leadId: meeting.leadId,
       userId: req.user!.sub,
     });
   } else if (input.mom && input.mom !== before.mom) {
-    await recordActivity({ type: 'MOM_ADDED', description: `MoM added for "${meeting.title}"`, leadId: meeting.leadId, userId: req.user!.sub });
+    await recordActivity({ organizationId: org, type: 'MOM_ADDED', description: `MoM added for "${meeting.title}"`, leadId: meeting.leadId, userId: req.user!.sub });
   } else {
-    await recordActivity({ type: 'MEETING_UPDATED', description: `Meeting "${meeting.title}" updated`, leadId: meeting.leadId, userId: req.user!.sub });
+    await recordActivity({ organizationId: org, type: 'MEETING_UPDATED', description: `Meeting "${meeting.title}" updated`, leadId: meeting.leadId, userId: req.user!.sub });
   }
 
   await recordAudit({ req, action: 'UPDATE', entityType: 'Meeting', entityId: id, oldValues: before, newValues: meeting });
@@ -68,7 +73,8 @@ export async function updateMeeting(req: Request, id: string, input: any) {
 }
 
 export async function deleteMeeting(req: Request, id: string) {
-  const before = await db.query.meetings.findFirst({ where: eq(meetings.id, id) });
+  const org = orgId(req);
+  const before = await db.query.meetings.findFirst({ where: and(eq(meetings.organizationId, org), eq(meetings.id, id)) });
   if (!before) throw ApiError.notFound('Meeting not found');
   await db.delete(meetings).where(eq(meetings.id, id));
   await recordAudit({ req, action: 'DELETE', entityType: 'Meeting', entityId: id, oldValues: before });

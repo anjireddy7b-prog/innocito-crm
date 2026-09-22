@@ -1,12 +1,13 @@
 import { Request, Response } from 'express';
 import { asyncHandler } from '@/utils/asyncHandler';
+import { orgId } from '@/utils/tenant';
 import * as service from './campaigns.service';
 
 export const list = asyncHandler(async (req: Request, res: Response) => {
-  res.json({ success: true, ...(await service.listCampaigns(req.query as any)) });
+  res.json({ success: true, ...(await service.listCampaigns(orgId(req), req.query as any)) });
 });
 export const getById = asyncHandler(async (req: Request, res: Response) => {
-  res.json({ success: true, data: await service.getCampaignById(req.params.id) });
+  res.json({ success: true, data: await service.getCampaignById(orgId(req), req.params.id) });
 });
 export const create = asyncHandler(async (req: Request, res: Response) => {
   res.status(201).json({ success: true, data: await service.createCampaign(req, req.body) });

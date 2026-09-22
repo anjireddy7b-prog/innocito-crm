@@ -1,13 +1,14 @@
 import { Request, Response } from 'express';
 import { asyncHandler } from '@/utils/asyncHandler';
+import { orgId } from '@/utils/tenant';
 import * as service from './contacts.service';
 
 export const list = asyncHandler(async (req: Request, res: Response) => {
-  res.json({ success: true, ...(await service.listContacts(req.query as any)) });
+  res.json({ success: true, ...(await service.listContacts(orgId(req), req.query as any)) });
 });
 
 export const getById = asyncHandler(async (req: Request, res: Response) => {
-  res.json({ success: true, data: await service.getContactById(req.params.id) });
+  res.json({ success: true, data: await service.getContactById(orgId(req), req.params.id) });
 });
 
 export const create = asyncHandler(async (req: Request, res: Response) => {
