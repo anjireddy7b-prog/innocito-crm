@@ -2,6 +2,9 @@
 export const PERMISSIONS = {
   USERS_MANAGE: 'users:manage',
   ROLES_VIEW: 'roles:view',
+  ROLES_MANAGE: 'roles:manage',
+  ORGANIZATION_MANAGE: 'organization:manage',
+  COMMENTS_MANAGE_ANY: 'comments:manage_any',
 
   LEADS_CREATE: 'leads:create',
   LEADS_VIEW: 'leads:view',

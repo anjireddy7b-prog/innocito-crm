@@ -6,6 +6,7 @@ import { ApiError } from '@/utils/ApiError';
 import { recordActivity } from '@/utils/activityLogger';
 import { recordAudit } from '@/utils/auditLogger';
 import { orgId } from '@/utils/tenant';
+import { PERMISSIONS } from '@/utils/permissions';
 
 export async function listComments(org: string, leadId: string) {
   return db.query.comments.findMany({
@@ -46,7 +47,10 @@ export async function updateComment(req: Request, id: string, body: string) {
   const org = orgId(req);
   const comment = await db.query.comments.findFirst({ where: and(eq(comments.organizationId, org), eq(comments.id, id)) });
   if (!comment) throw ApiError.notFound('Comment not found');
-  if (comment.userId !== req.user!.sub && req.user!.role !== 'ADMIN') {
+  // Phase 3: was a hardcoded `role !== 'ADMIN'` check — COMMENTS_MANAGE_ANY is granted to ADMIN by
+  // default (see utils/permissions.ts's ROLE_PERMISSIONS), so this is a zero-behavior-change swap
+  // that also now respects a custom role granted the same permission.
+  if (comment.userId !== req.user!.sub && !req.user!.permissions.includes(PERMISSIONS.COMMENTS_MANAGE_ANY)) {
     throw ApiError.forbidden('You can only edit your own comments');
   }
   const [updated] = await db.update(comments).set({ body, editedAt: new Date() }).where(eq(comments.id, id)).returning();
@@ -58,7 +62,7 @@ export async function deleteComment(req: Request, id: string) {
   const org = orgId(req);
   const comment = await db.query.comments.findFirst({ where: and(eq(comments.organizationId, org), eq(comments.id, id)) });
   if (!comment) throw ApiError.notFound('Comment not found');
-  if (comment.userId !== req.user!.sub && req.user!.role !== 'ADMIN') {
+  if (comment.userId !== req.user!.sub && !req.user!.permissions.includes(PERMISSIONS.COMMENTS_MANAGE_ANY)) {
     throw ApiError.forbidden('You can only delete your own comments');
   }
   await db.delete(comments).where(eq(comments.id, id));

@@ -1,29 +1,22 @@
 import { Router } from 'express';
-import { asc } from 'drizzle-orm';
-import { authenticate } from '@/middleware/auth';
-import { asyncHandler } from '@/utils/asyncHandler';
-import { db } from '@/config/db';
-import { roles } from '@/db/schema';
+import { authenticate, requirePermission } from '@/middleware/auth';
+import { validate } from '@/middleware/validate';
+import { PERMISSIONS } from '@/utils/permissions';
+import { createRoleSchema, updateRoleSchema } from './roles.validation';
+import * as controller from './roles.controller';
 
 export const rolesRouter = Router();
 
 rolesRouter.use(authenticate);
 
-rolesRouter.get(
-  '/',
-  asyncHandler(async (_req, res) => {
-    const rows = await db.query.roles.findMany({
-      with: { permissions: { with: { permission: true } } },
-      orderBy: asc(roles.name),
-    });
-    res.json({
-      success: true,
-      data: rows.map((r) => ({
-        id: r.id,
-        name: r.name,
-        description: r.description,
-        permissions: r.permissions.map((rp) => rp.permission.key),
-      })),
-    });
-  })
-);
+// Phase 3: this list used to be un-permissioned and platform-wide (every authenticated caller saw
+// every organization's roles — a cross-tenant leak once roles became tenant-scoped in this same
+// phase). It's now scoped to the caller's own organization (see roles.service.ts) and requires
+// either ROLES_VIEW (the roles-management screen) or USERS_MANAGE (the user-creation role picker
+// needs to see the org's roles too, without needing full roles-management access).
+rolesRouter.get('/', requirePermission(PERMISSIONS.ROLES_VIEW, PERMISSIONS.USERS_MANAGE), controller.list);
+rolesRouter.get('/:id', requirePermission(PERMISSIONS.ROLES_VIEW, PERMISSIONS.USERS_MANAGE), controller.getById);
+
+rolesRouter.post('/', requirePermission(PERMISSIONS.ROLES_MANAGE), validate(createRoleSchema), controller.create);
+rolesRouter.patch('/:id', requirePermission(PERMISSIONS.ROLES_MANAGE), validate(updateRoleSchema), controller.update);
+rolesRouter.delete('/:id', requirePermission(PERMISSIONS.ROLES_MANAGE), controller.remove);

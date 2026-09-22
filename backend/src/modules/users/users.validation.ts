@@ -7,7 +7,10 @@ export const createUserSchema = z.object({
   lastName: z.string().min(1).max(100),
   phone: z.string().max(30).optional(),
   jobTitle: z.string().max(150).optional(),
-  roleName: z.enum(['ADMIN', 'INSIDE_SALES', 'SALES', 'DELIVERY', 'MANAGEMENT']),
+  // Phase 3: roles are tenant-scoped, admin-editable data, so a fixed 5-name enum can no longer
+  // describe every role that might exist — the caller now names the org's own role by id
+  // (users.service.ts resolves and validates it belongs to the caller's organization).
+  roleId: z.string().uuid('Select a role'),
   temporaryPassword: z.string().min(8).optional(),
 });
 
@@ -21,7 +24,7 @@ export const updateUserSchema = z.object({
   lastName: z.string().min(1).max(100).optional(),
   phone: z.string().max(30).optional().nullable(),
   jobTitle: z.string().max(150).optional().nullable(),
-  roleName: z.enum(['ADMIN', 'INSIDE_SALES', 'SALES', 'DELIVERY', 'MANAGEMENT']).optional(),
+  roleId: z.string().uuid().optional(),
 });
 
 export const resetPasswordSchema = z.object({
@@ -30,6 +33,6 @@ export const resetPasswordSchema = z.object({
 
 export const listUsersQuerySchema = paginationSchema.extend({
   search: z.string().optional(),
-  roleName: z.string().optional(),
+  roleId: z.string().uuid().optional(),
   isActive: z.coerce.boolean().optional(),
 });

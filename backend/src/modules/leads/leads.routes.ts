@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate, requirePermission, requireRole } from '@/middleware/auth';
+import { authenticate, requirePermission } from '@/middleware/auth';
 import { validate } from '@/middleware/validate';
 import { PERMISSIONS } from '@/utils/permissions';
 import { leadImportUpload } from './import.middleware';
@@ -31,4 +31,7 @@ leadsRouter.patch('/:id', validate(updateLeadSchema), controller.update);
 leadsRouter.patch('/:id/assign', requirePermission(PERMISSIONS.LEADS_ASSIGN), validate(assignLeadSchema), controller.assign);
 leadsRouter.post('/bulk-assign', requirePermission(PERMISSIONS.LEADS_ASSIGN), validate(bulkAssignSchema), controller.bulkAssign);
 leadsRouter.patch('/:id/status', validate(changeStatusSchema), controller.changeStatus);
-leadsRouter.delete('/:id', requireRole('ADMIN'), controller.remove);
+// Phase 3: was requireRole('ADMIN') — a hardcoded role-name check that would silently stop
+// enforcing anything for a renamed or custom role. LEADS_DELETE is granted to ADMIN by default
+// (see utils/permissions.ts's ROLE_PERMISSIONS) so this is a zero-behavior-change swap today.
+leadsRouter.delete('/:id', requirePermission(PERMISSIONS.LEADS_DELETE), controller.remove);

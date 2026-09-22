@@ -9,17 +9,22 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCreateUser, useUpdateUser } from '@/api/users';
+import { useRoles } from '@/api/roles';
 import { apiErrorMessage } from '@/lib/api';
-import { ROLE_NAMES } from '@/types';
 import type { AppUser } from '@/types';
 
+// Phase 3: roles are tenant-scoped, admin-editable data, so the picker below is driven by this
+// organization's actual /roles list (useRoles()) rather than the old fixed ROLE_NAMES array — an
+// Admin can rename or add roles and this form picks them up with no code change. The role is
+// selected and submitted by id, not by name, since names are no longer guaranteed unique across
+// organizations (or even meaningful as a fixed set within one, once custom roles exist).
 const schema = z.object({
   email: z.string().email('Enter a valid email'),
   firstName: z.string().min(1, 'First name is required'),
   lastName: z.string().min(1, 'Last name is required'),
   phone: z.string().optional(),
   jobTitle: z.string().optional(),
-  roleName: z.enum(ROLE_NAMES as [string, ...string[]]),
+  roleId: z.string().min(1, 'Select a role'),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -30,7 +35,7 @@ function toDefaults(user?: AppUser | null): FormValues {
     lastName: user?.lastName ?? '',
     phone: user?.phone ?? '',
     jobTitle: user?.jobTitle ?? '',
-    roleName: user?.role?.name ?? 'INSIDE_SALES',
+    roleId: user?.role?.id ?? '',
   };
 }
 
@@ -48,6 +53,7 @@ export function UserFormDialog({
   const isEdit = !!user;
   const createUser = useCreateUser();
   const updateUser = useUpdateUser(user?.id ?? '');
+  const { data: roles } = useRoles();
 
   const { register, handleSubmit, control, reset, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -68,7 +74,7 @@ export function UserFormDialog({
           lastName: values.lastName,
           phone: values.phone || undefined,
           jobTitle: values.jobTitle || undefined,
-          roleName: values.roleName,
+          roleId: values.roleId,
         });
         toast.success('User updated');
         onOpenChange(false);
@@ -79,7 +85,7 @@ export function UserFormDialog({
           lastName: values.lastName,
           phone: values.phone || undefined,
           jobTitle: values.jobTitle || undefined,
-          roleName: values.roleName,
+          roleId: values.roleId,
         });
         toast.success(`User created — temporary password: ${result.temporaryPassword}`);
         onOpenChange(false);
@@ -134,12 +140,15 @@ export function UserFormDialog({
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <Label>Role *</Label>
-            <Controller control={control} name="roleName" render={({ field }) => (
+            <Controller control={control} name="roleId" render={({ field }) => (
               <Select value={field.value} onValueChange={field.onChange}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{ROLE_NAMES.map((r) => <SelectItem key={r} value={r}>{r.replace(/_/g, ' ')}</SelectItem>)}</SelectContent>
+                <SelectTrigger><SelectValue placeholder="Select a role" /></SelectTrigger>
+                <SelectContent>
+                  {roles?.map((r) => <SelectItem key={r.id} value={r.id}>{r.name.replace(/_/g, ' ')}</SelectItem>)}
+                </SelectContent>
               </Select>
             )} />
+            {errors.roleId && <p className="text-xs text-destructive">{errors.roleId.message}</p>}
           </div>
           <DialogFooter className="sm:col-span-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>

@@ -1,7 +1,8 @@
 import { Router } from 'express';
-import { authenticate, requireRole } from '@/middleware/auth';
+import { authenticate, requirePermission } from '@/middleware/auth';
 import { validate } from '@/middleware/validate';
 import { signupLimiter } from '@/middleware/rateLimiter';
+import { PERMISSIONS } from '@/utils/permissions';
 import { signupSchema, updateOrganizationSchema } from './organizations.validation';
 import * as controller from './organizations.controller';
 
@@ -28,4 +29,6 @@ organizationsRouter.use(authenticate);
  * since nothing in this app is platform-admin-scoped yet.
  */
 organizationsRouter.get('/me', controller.getMe);
-organizationsRouter.patch('/me', requireRole('ADMIN'), validate(updateOrganizationSchema), controller.updateMe);
+// Phase 3: was requireRole('ADMIN'); ORGANIZATION_MANAGE is its intended permanent home (see
+// utils/permissions.ts) and is granted to ADMIN by default, so this is a zero-behavior-change swap.
+organizationsRouter.patch('/me', requirePermission(PERMISSIONS.ORGANIZATION_MANAGE), validate(updateOrganizationSchema), controller.updateMe);

@@ -2,7 +2,7 @@ import { Fragment } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Target, Building2, Users, Megaphone, Activity, CalendarClock, ListChecks,
-  FileText, BarChart3, UserCog, ShieldCheck, Settings, ChevronLeft, ChevronRight,
+  FileText, BarChart3, UserCog, ShieldCheck, KeyRound, Settings, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useUIStore } from '@/store/uiStore';
@@ -29,7 +29,11 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Documents', to: '/documents', icon: FileText },
   { label: 'Activity Feed', to: '/activities', icon: Activity },
   { label: 'Reports', to: '/reports', icon: BarChart3, permission: PERMISSIONS.REPORTS_VIEW },
-  { label: 'Users', to: '/users', icon: UserCog, roles: ['ADMIN'] },
+  // Phase 3: was a hardcoded roles: ['ADMIN'] gate — USERS_MANAGE is granted to ADMIN by default
+  // (see backend/src/utils/permissions.ts), so this is a zero-behavior-change swap that also now
+  // shows this item to any custom role granted the same permission.
+  { label: 'Users', to: '/users', icon: UserCog, permission: PERMISSIONS.USERS_MANAGE },
+  { label: 'Roles & Permissions', to: '/roles', icon: KeyRound, permission: PERMISSIONS.ROLES_VIEW },
   { label: 'Audit Logs', to: '/audit-logs', icon: ShieldCheck, permission: PERMISSIONS.AUDIT_LOGS_VIEW },
   { label: 'Settings', to: '/settings', icon: Settings },
 ];

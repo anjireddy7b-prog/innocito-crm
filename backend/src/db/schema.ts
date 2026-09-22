@@ -22,7 +22,6 @@ import { relations, sql } from 'drizzle-orm';
 // ----------------------------------------------------------------------------
 // Enums
 // ----------------------------------------------------------------------------
-export const roleNameEnum = pgEnum('role_name', ['ADMIN', 'INSIDE_SALES', 'SALES', 'DELIVERY', 'MANAGEMENT']);
 export const leadSourceEnum = pgEnum('lead_source', [
   'EMAIL', 'LINKEDIN', 'COLD_CALLING', 'REFERRAL', 'WEBSITE', 'EVENT', 'PARTNER', 'OTHER',
 ]);
@@ -75,13 +74,25 @@ export const organizations = pgTable(
 // ----------------------------------------------------------------------------
 // Identity / Access
 // ----------------------------------------------------------------------------
-export const roles = pgTable('roles', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  name: roleNameEnum('name').notNull().unique(),
-  description: text('description'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
+// Phase 3 (see migrations 0011-0013 and the Architecture Report): `roles` moved from a single
+// global, hardcoded catalog (5 fixed enum values, shared by every organization on the platform)
+// to tenant-scoped, admin-editable data. `organizationId` is NOT NULL and unique per (org, name)
+// — every organization owns its own independent set of role rows, seeded from the same 5
+// defaults but freely rename-able, deletable, and extensible with custom roles from here on.
+// `name` is plain text rather than the old `role_name` enum for exactly that reason: an Admin can
+// create a role called "Team Lead" that the database schema was never told about in advance.
+export const roles = pgTable(
+  'roles',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
+    name: varchar('name', { length: 100 }).notNull(),
+    description: text('description'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [index('roles_org_idx').on(t.organizationId), uniqueIndex('roles_org_name_unique').on(t.organizationId, t.name)]
+);
 
 export const permissions = pgTable('permissions', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -485,13 +496,15 @@ export const auditLogs = pgTable(
 // ----------------------------------------------------------------------------
 export const organizationsRelations = relations(organizations, ({ many }) => ({
   users: many(users),
+  roles: many(roles),
   companies: many(companies),
   contacts: many(contacts),
   leads: many(leads),
   campaigns: many(campaigns),
 }));
 
-export const rolesRelations = relations(roles, ({ many }) => ({
+export const rolesRelations = relations(roles, ({ one, many }) => ({
+  organization: one(organizations, { fields: [roles.organizationId], references: [organizations.id] }),
   permissions: many(rolePermissions),
   users: many(users),
 }));

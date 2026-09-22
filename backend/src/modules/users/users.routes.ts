@@ -1,6 +1,7 @@
 import { Router } from 'express';
-import { authenticate, requireRole } from '@/middleware/auth';
+import { authenticate, requirePermission } from '@/middleware/auth';
 import { validate } from '@/middleware/validate';
+import { PERMISSIONS } from '@/utils/permissions';
 import {
   createUserSchema,
   updateUserSchema,
@@ -16,9 +17,10 @@ usersRouter.use(authenticate);
 // Any authenticated user can see a lightweight assignable-users list (for dropdowns)
 usersRouter.get('/assignable', controller.assignable);
 
-// Everything else is Admin-only: only Admins create accounts, assign roles,
-// reset passwords, and enable/disable users.
-usersRouter.use(requireRole('ADMIN'));
+// Everything else requires USERS_MANAGE: create accounts, assign roles, reset passwords, and
+// enable/disable users. Phase 3: was requireRole('ADMIN') — USERS_MANAGE is granted to ADMIN by
+// default (see utils/permissions.ts's ROLE_PERMISSIONS), so this is a zero-behavior-change swap.
+usersRouter.use(requirePermission(PERMISSIONS.USERS_MANAGE));
 
 usersRouter.get('/', validate(listUsersQuerySchema, 'query'), controller.list);
 usersRouter.get('/:id', controller.getById);

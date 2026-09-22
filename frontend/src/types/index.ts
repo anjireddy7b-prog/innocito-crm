@@ -238,7 +238,14 @@ export interface AppUser {
   mustChangePassword: boolean;
   lastLoginAt: string | null;
   createdAt: string;
-  role: { id: string; name: RoleName };
+  // Phase 3: roles are tenant-scoped, admin-editable data — an organization can rename or create
+  // roles freely, so this can no longer be the fixed RoleName union (see api/roles.ts's Role type,
+  // updated the same way, and UserFormDialog.tsx, which now drives its role picker off the org's
+  // actual /roles list rather than the hardcoded ROLE_NAMES array below). RoleName/ROLE_NAMES stay
+  // as they are for the handful of other call sites that key business rules off specific default
+  // role names (e.g. lead-creation's SDR/rep pickers) — a deliberate, documented scope limit for
+  // this phase; those are unaffected by a custom role and keep working exactly as before.
+  role: { id: string; name: string };
 }
 
 export interface Notification {

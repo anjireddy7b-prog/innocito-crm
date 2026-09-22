@@ -2,7 +2,7 @@ import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { useAuthBootstrap } from '@/hooks/useAuthBootstrap';
-import { ProtectedRoute, RequireRole, RequirePermission } from '@/routes/ProtectedRoute';
+import { ProtectedRoute, RequirePermission } from '@/routes/ProtectedRoute';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { PERMISSIONS } from '@/lib/permissions';
 import LoginPage from '@/pages/LoginPage';
@@ -23,6 +23,7 @@ const DocumentsPage = lazy(() => import('@/pages/DocumentsPage'));
 const ActivitiesPage = lazy(() => import('@/pages/ActivitiesPage'));
 const ReportsPage = lazy(() => import('@/pages/ReportsPage'));
 const UsersPage = lazy(() => import('@/pages/UsersPage'));
+const RolesPage = lazy(() => import('@/pages/roles/RolesPage'));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
 const AuditLogsPage = lazy(() => import('@/pages/AuditLogsPage'));
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'));
@@ -82,9 +83,20 @@ export default function App() {
           <Route
             path="/users"
             element={
-              <RequireRole roles={['ADMIN']}>
+              // Phase 3: was RequireRole roles={['ADMIN']} — USERS_MANAGE is granted to ADMIN by
+              // default, so this is a zero-behavior-change swap to the permission this route was
+              // always really gated by (see backend/src/modules/users/users.routes.ts).
+              <RequirePermission permission={PERMISSIONS.USERS_MANAGE}>
                 <UsersPage />
-              </RequireRole>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/roles"
+            element={
+              <RequirePermission permission={PERMISSIONS.ROLES_VIEW}>
+                <RolesPage />
+              </RequirePermission>
             }
           />
           <Route

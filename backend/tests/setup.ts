@@ -2,10 +2,10 @@ import { beforeAll, afterAll } from 'vitest';
 import argon2 from 'argon2';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { db, pool } from '@/config/db';
-import { organizations, roles, permissions, rolePermissions, users, campaigns } from '@/db/schema';
-import { ALL_PERMISSIONS, ROLE_PERMISSIONS } from '@/utils/permissions';
+import { organizations, permissions, users, campaigns } from '@/db/schema';
+import { ALL_PERMISSIONS } from '@/utils/permissions';
+import { seedDefaultRolesForOrganization } from '@/utils/defaultRoles';
 import { NEW_CAMPAIGN_SEEDS } from '@/utils/leadFormOptions';
-import { eq } from 'drizzle-orm';
 
 export const TEST_ADMIN = { email: 'admin@innocito.com', password: 'ChangeMe!123' };
 export const TEST_INSIDE_SALES = { email: 'inside.sales@innocito.com', password: 'Welcome@123' };
@@ -19,38 +19,36 @@ export const TEST_ORG_B_ADMIN = { email: 'admin@othertenant.com', password: 'Cha
 export let primaryOrgId: string;
 export let secondaryOrgId: string;
 
+// Phase 3: role name -> roleId, one independent map per organization (see
+// utils/defaultRoles.ts). Exported so tests that need to assign/reassign a role (e.g.
+// users.test.ts's roleId-based create/update payloads) don't have to re-derive these themselves —
+// and, just as importantly, so no test can accidentally reach for a role id that actually belongs
+// to the OTHER organization, which is exactly the bug this phase's migration fixed in production.
+export let primaryRoleIds: Record<string, string>;
+export let secondaryRoleIds: Record<string, string>;
+
 async function seedMinimal() {
   const [primaryOrg] = await db.insert(organizations).values({ name: 'Test Org', slug: 'test-org' }).returning();
   primaryOrgId = primaryOrg.id;
   const [secondaryOrg] = await db.insert(organizations).values({ name: 'Other Tenant', slug: 'other-tenant' }).returning();
   secondaryOrgId = secondaryOrg.id;
 
-  const permissionRows = await Promise.all(
-    ALL_PERMISSIONS.map(async (key) => {
-      const [row] = await db.insert(permissions).values({ key }).returning();
-      return row;
-    })
-  );
-  const permissionByKey = new Map(permissionRows.map((p) => [p.key, p]));
+  await Promise.all(ALL_PERMISSIONS.map((key) => db.insert(permissions).values({ key })));
 
-  const roleIds: Record<string, string> = {};
-  for (const roleName of Object.keys(ROLE_PERMISSIONS)) {
-    const [role] = await db.insert(roles).values({ name: roleName as any }).returning();
-    roleIds[roleName] = role.id;
-    const grants = ROLE_PERMISSIONS[roleName as keyof typeof ROLE_PERMISSIONS]
-      .map((key) => permissionByKey.get(key))
-      .filter((p): p is NonNullable<typeof p> => !!p);
-    if (grants.length) {
-      await db.insert(rolePermissions).values(grants.map((p) => ({ roleId: role.id, permissionId: p.id })));
-    }
-  }
+  // Each organization gets its OWN copy of the 5 default roles via the same helper production
+  // code uses (db/seed.ts, organizations.service.ts's signup()) — never a role row shared between
+  // the two test tenants, mirroring exactly what migrations 0011-0013 fixed for real data.
+  const primaryRoles = await seedDefaultRolesForOrganization(primaryOrgId);
+  const secondaryRoles = await seedDefaultRolesForOrganization(secondaryOrgId);
+  primaryRoleIds = Object.fromEntries([...primaryRoles.entries()].map(([name, role]) => [name, role.id]));
+  secondaryRoleIds = Object.fromEntries([...secondaryRoles.entries()].map(([name, role]) => [name, role.id]));
 
   await db.insert(users).values({
     organizationId: primaryOrgId,
     email: TEST_ADMIN.email,
     firstName: 'Test',
     lastName: 'Admin',
-    roleId: roleIds.ADMIN,
+    roleId: primaryRoleIds.ADMIN,
     passwordHash: await argon2.hash(TEST_ADMIN.password),
     mustChangePassword: false,
     isActive: true,
@@ -61,7 +59,7 @@ async function seedMinimal() {
     email: TEST_INSIDE_SALES.email,
     firstName: 'Test',
     lastName: 'InsideSales',
-    roleId: roleIds.INSIDE_SALES,
+    roleId: primaryRoleIds.INSIDE_SALES,
     passwordHash: await argon2.hash(TEST_INSIDE_SALES.password),
     mustChangePassword: false,
     isActive: true,
@@ -72,7 +70,7 @@ async function seedMinimal() {
     email: TEST_SALES.email,
     firstName: 'Test',
     lastName: 'Sales',
-    roleId: roleIds.SALES,
+    roleId: primaryRoleIds.SALES,
     passwordHash: await argon2.hash(TEST_SALES.password),
     mustChangePassword: false,
     isActive: true,
@@ -85,7 +83,7 @@ async function seedMinimal() {
     email: TEST_ORG_B_ADMIN.email,
     firstName: 'Other',
     lastName: 'Admin',
-    roleId: roleIds.ADMIN,
+    roleId: secondaryRoleIds.ADMIN,
     passwordHash: await argon2.hash(TEST_ORG_B_ADMIN.password),
     mustChangePassword: false,
     isActive: true,

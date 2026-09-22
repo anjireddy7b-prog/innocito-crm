@@ -33,7 +33,7 @@ export async function listUsers(org: string, query: {
   page: number;
   pageSize: number;
   search?: string;
-  roleName?: string;
+  roleId?: string;
   isActive?: boolean;
   sortBy?: string;
   sortDir: 'asc' | 'desc';
@@ -49,13 +49,11 @@ export async function listUsers(org: string, query: {
     );
   }
   if (query.isActive !== undefined) conditions.push(eq(users.isActive, query.isActive));
-
-  let roleId: string | undefined;
-  if (query.roleName) {
-    const role = await db.query.roles.findFirst({ where: eq(roles.name, query.roleName as any) });
-    roleId = role?.id;
-    if (roleId) conditions.push(eq(users.roleId, roleId));
-  }
+  // Phase 3: filtering by roleId directly (rather than resolving a roleName first) needs no
+  // extra org-ownership check here — it's combined with the eq(users.organizationId, org)
+  // condition above, and every user's own roleId already points at a role in their own
+  // organization, so a roleId from another org simply matches zero rows rather than leaking one.
+  if (query.roleId) conditions.push(eq(users.roleId, query.roleId));
 
   const where = conditions.length ? and(...conditions) : undefined;
   const sortable: Record<string, any> = { firstName: users.firstName, lastName: users.lastName, email: users.email, createdAt: users.createdAt, lastLoginAt: users.lastLoginAt };
@@ -94,12 +92,15 @@ export async function createUser(
     lastName: string;
     phone?: string;
     jobTitle?: string;
-    roleName: string;
+    roleId: string;
     temporaryPassword?: string;
   }
 ) {
   const org = orgId(req);
-  const role = await db.query.roles.findFirst({ where: eq(roles.name, input.roleName as any) });
+  // Phase 3: roles are tenant-scoped, so this lookup must confirm the role actually belongs to
+  // the caller's own organization — without the organizationId condition, a caller could pass
+  // another organization's roleId (a real cross-tenant privilege risk, not just a 404).
+  const role = await db.query.roles.findFirst({ where: and(eq(roles.organizationId, org), eq(roles.id, input.roleId)) });
   if (!role) throw ApiError.badRequest('Unknown role');
 
   // NOTE: email uniqueness stays platform-wide in Phase 1 (users.email has a global unique
@@ -137,15 +138,17 @@ export async function createUser(
 export async function updateUser(
   req: Request,
   id: string,
-  input: { email?: string; firstName?: string; lastName?: string; phone?: string | null; jobTitle?: string | null; roleName?: string }
+  input: { email?: string; firstName?: string; lastName?: string; phone?: string | null; jobTitle?: string | null; roleId?: string }
 ) {
   const org = orgId(req);
   const before = await db.query.users.findFirst({ where: and(eq(users.organizationId, org), eq(users.id, id)) });
   if (!before) throw ApiError.notFound('User not found');
 
   let roleId: string | undefined;
-  if (input.roleName) {
-    const role = await db.query.roles.findFirst({ where: eq(roles.name, input.roleName as any) });
+  if (input.roleId) {
+    // Same cross-tenant guard as createUser: confirm the role belongs to this organization
+    // before letting a user be repointed to it.
+    const role = await db.query.roles.findFirst({ where: and(eq(roles.organizationId, org), eq(roles.id, input.roleId)) });
     if (!role) throw ApiError.badRequest('Unknown role');
     roleId = role.id;
   }
@@ -181,7 +184,7 @@ export async function updateUser(
 
   await recordAudit({
     req,
-    action: input.roleName ? 'ROLE_CHANGED' : 'UPDATE',
+    action: input.roleId ? 'ROLE_CHANGED' : 'UPDATE',
     entityType: 'User',
     entityId: id,
     oldValues: { firstName: before.firstName, lastName: before.lastName, roleId: before.roleId },

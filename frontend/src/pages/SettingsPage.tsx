@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { changePasswordRequest } from '@/api/auth';
 import { useMyOrganization, useUpdateMyOrganization } from '@/api/organizations';
 import { useAuthStore } from '@/store/authStore';
+import { PERMISSIONS } from '@/lib/permissions';
 import { apiErrorMessage } from '@/lib/api';
 import { initials, humanizeEnum } from '@/lib/utils';
 
@@ -41,6 +42,7 @@ type OrgFormValues = z.infer<typeof orgSchema>;
 
 export default function SettingsPage() {
   const user = useAuthStore((s) => s.user);
+  const hasPermission = useAuthStore((s) => s.hasPermission);
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({ resolver: zodResolver(schema) });
 
@@ -69,7 +71,10 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      {user?.role === 'ADMIN' && <OrganizationCard />}
+      {/* Phase 3: was user?.role === 'ADMIN' — ORGANIZATION_MANAGE is granted to ADMIN by
+          default (see backend/src/utils/permissions.ts), the same permission this section's own
+          PATCH /organizations/me route is now gated by. */}
+      {hasPermission(PERMISSIONS.ORGANIZATION_MANAGE) && <OrganizationCard />}
 
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><KeyRound className="h-4 w-4" /> Change Password</CardTitle></CardHeader>

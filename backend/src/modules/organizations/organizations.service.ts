@@ -2,11 +2,12 @@ import argon2 from 'argon2';
 import { Request } from 'express';
 import { and, eq, ne } from 'drizzle-orm';
 import { db } from '@/config/db';
-import { organizations, roles, users, refreshTokens } from '@/db/schema';
+import { organizations, users, refreshTokens, rolePermissions } from '@/db/schema';
 import { ApiError } from '@/utils/ApiError';
 import { orgId } from '@/utils/tenant';
 import { recordAudit } from '@/utils/auditLogger';
 import { signAccessToken, generateRefreshTokenValue, hashToken, refreshExpiryDate } from '@/utils/tokens';
+import { seedDefaultRolesForOrganization } from '@/utils/defaultRoles';
 
 /** Slugify an organization name into the same shape `slugSchema` in organizations.validation.ts
  * accepts: lowercase letters/digits separated by single hyphens, no leading/trailing hyphen. */
@@ -67,17 +68,24 @@ export async function signup(
   const candidateSlug = input.slug ?? generateSlug(input.organizationName);
   const slug = await resolveUniqueSlug(candidateSlug, Boolean(input.slug));
 
-  // Loaded with its permission grants up front (mirrors auth.service.ts's loadUserWithPermissions)
-  // so the very first access token this new Admin gets is already fully populated — no separate
-  // "permissions are empty until you refresh" gap immediately after signing up.
-  const adminRole = await db.query.roles.findFirst({
-    where: eq(roles.name, 'ADMIN'),
-    with: { permissions: { with: { permission: true } } },
-  });
-  if (!adminRole) throw ApiError.internal('ADMIN role is not seeded — cannot provision a new organization');
-  const adminPermissions = adminRole.permissions.map((rp) => rp.permission.key);
-
   const [organization] = await db.insert(organizations).values({ name: input.organizationName, slug }).returning();
+
+  // Phase 3: every organization gets its OWN copy of the 5 default roles (never a shared global
+  // row — see utils/defaultRoles.ts and migrations 0011-0013) so this org's role permissions can
+  // never be edited out from under it, or edit anyone else's, by construction. This is the direct
+  // replacement for the old `eq(roles.name, 'ADMIN')` lookup, which — before Phase 3 — pointed
+  // every organization's first Admin at the exact same platform-wide row.
+  const roleByName = await seedDefaultRolesForOrganization(organization.id);
+  const adminRole = roleByName.get('ADMIN');
+  if (!adminRole) throw ApiError.internal('ADMIN role could not be seeded — cannot provision a new organization');
+  // ROLE_PERMISSIONS['ADMIN'] is ALL_PERMISSIONS today, but read the grants seedDefaultRolesForOrganization
+  // actually created rather than assuming that, so this stays correct even after an Admin edits the
+  // ADMIN role's grants for their own organization later.
+  const adminPermissionRows = await db.query.rolePermissions.findMany({
+    where: eq(rolePermissions.roleId, adminRole.id),
+    with: { permission: true },
+  });
+  const adminPermissions = adminPermissionRows.map((rp) => rp.permission.key);
 
   const passwordHash = await argon2.hash(input.password);
   const [user] = await db

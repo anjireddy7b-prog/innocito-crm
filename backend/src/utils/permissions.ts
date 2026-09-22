@@ -6,6 +6,17 @@
 export const PERMISSIONS = {
   USERS_MANAGE: 'users:manage', // create/disable/reset password/assign roles — Admin only
   ROLES_VIEW: 'roles:view',
+  // Phase 3: create/rename custom roles and edit any role's permission grants. Deliberately
+  // separate from ROLES_VIEW (a role's own permission list is visible more widely — e.g. to
+  // populate the user-creation role picker — than the power to change what that list grants).
+  ROLES_MANAGE: 'roles:manage',
+  // Phase 3: edit the organization's own profile (name/slug). Existed unused since Phase 2, which
+  // gated PATCH /organizations/me with a hardcoded requireRole('ADMIN') instead — this is that
+  // permission's intended home.
+  ORGANIZATION_MANAGE: 'organization:manage',
+  // Phase 3: edit or delete another user's comment, not just your own (previously a hardcoded
+  // `role !== 'ADMIN'` check in comments.service.ts).
+  COMMENTS_MANAGE_ANY: 'comments:manage_any',
 
   LEADS_CREATE: 'leads:create',
   LEADS_VIEW: 'leads:view',
@@ -84,4 +95,49 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     PERMISSIONS.REPORTS_EXPORT,
     PERMISSIONS.AUDIT_LOGS_VIEW,
   ],
+};
+
+/** The 5 role names every organization is seeded with (see utils/defaultRoles.ts). Kept as a
+ * plain array of strings, not a type union — Phase 3 made role names admin-editable data, so
+ * nothing in the app should assume this is the exhaustive set of roles that can ever exist. */
+export const DEFAULT_ROLE_NAMES = Object.keys(ROLE_PERMISSIONS);
+
+/** Human-readable description shown in the permission-catalog / role-editor UI. Centralized here
+ * (rather than duplicated in db/seed.ts) so the GET /api/permissions route and the seed script
+ * stay in sync by construction. */
+export const PERMISSION_DESCRIPTIONS: Record<PermissionKey, string> = {
+  [PERMISSIONS.USERS_MANAGE]: 'Create users, assign roles, reset passwords, enable/disable accounts',
+  [PERMISSIONS.ROLES_VIEW]: 'View roles & permissions',
+  [PERMISSIONS.ROLES_MANAGE]: 'Create, rename, and delete roles; edit their permission grants',
+  [PERMISSIONS.ORGANIZATION_MANAGE]: "Edit the organization's name and URL slug",
+  [PERMISSIONS.COMMENTS_MANAGE_ANY]: "Edit or delete any user's comment, not just your own",
+  [PERMISSIONS.LEADS_CREATE]: 'Create new leads',
+  [PERMISSIONS.LEADS_VIEW]: 'View leads',
+  [PERMISSIONS.LEADS_EDIT_OWN]: 'Edit leads you are assigned to / own / created',
+  [PERMISSIONS.LEADS_EDIT_ANY]: 'Edit any lead regardless of ownership',
+  [PERMISSIONS.LEADS_DELETE]: 'Delete (deactivate) leads',
+  [PERMISSIONS.LEADS_ASSIGN]: 'Assign leads to Sales/Delivery reps',
+  [PERMISSIONS.COMPANIES_MANAGE]: 'Create/edit/delete companies',
+  [PERMISSIONS.CONTACTS_MANAGE]: 'Create/edit/delete contacts',
+  [PERMISSIONS.CAMPAIGNS_MANAGE]: 'Create/edit/delete campaigns',
+  [PERMISSIONS.MEETINGS_MANAGE]: 'Schedule and update meetings, record MoM',
+  [PERMISSIONS.TASKS_MANAGE]: 'Create and update tasks',
+  [PERMISSIONS.DOCUMENTS_UPLOAD]: 'Upload documents',
+  [PERMISSIONS.DOCUMENTS_DELETE]: 'Delete documents',
+  [PERMISSIONS.COMMENTS_CREATE]: 'Add comments to leads',
+  [PERMISSIONS.REPORTS_VIEW]: 'View reports',
+  [PERMISSIONS.REPORTS_EXPORT]: 'Export reports to CSV/Excel/PDF',
+  [PERMISSIONS.DASHBOARD_VIEW]: 'View the KPI dashboard',
+  [PERMISSIONS.AUDIT_LOGS_VIEW]: 'View the security audit log',
+  [PERMISSIONS.SETTINGS_MANAGE]: 'Manage system settings',
+};
+
+/** Description seeded onto each organization's own copy of the 5 default roles. Editable
+ * afterward (like everything else about a role, post-Phase 3) — this is only the starting text. */
+export const DEFAULT_ROLE_DESCRIPTIONS: Record<string, string> = {
+  ADMIN: 'Full system access — manages users, roles, and all data',
+  INSIDE_SALES: 'Creates and qualifies leads, schedules first meetings, assigns to Sales/Delivery',
+  SALES: 'Owns the sales cycle: meetings, proposals, negotiation, close',
+  DELIVERY: 'Owns technical delivery: demos, technical validation, handoff',
+  MANAGEMENT: 'Cross-team visibility, reporting, and analytics',
 };

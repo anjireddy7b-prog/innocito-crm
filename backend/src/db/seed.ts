@@ -19,35 +19,12 @@ import argon2 from 'argon2';
 import ExcelJS from 'exceljs';
 import { and, eq, count } from 'drizzle-orm';
 import { db, pool } from '@/config/db';
-import { organizations, roles, permissions, rolePermissions, users, companies, contacts, campaigns, leads, meetings, activities } from '@/db/schema';
-import { ALL_PERMISSIONS, ROLE_PERMISSIONS, PERMISSIONS } from '@/utils/permissions';
+import { organizations, roles, permissions, users, companies, contacts, campaigns, leads, meetings, activities } from '@/db/schema';
+import { ALL_PERMISSIONS, PERMISSION_DESCRIPTIONS } from '@/utils/permissions';
+import { seedDefaultRolesForOrganization } from '@/utils/defaultRoles';
 import { env } from '@/config/env';
 import { logger } from '@/config/logger';
 import { parseFlexibleDate, splitName, classifyOutcome } from '@/utils/spreadsheetImport';
-
-const PERMISSION_DESCRIPTIONS: Record<string, string> = {
-  [PERMISSIONS.USERS_MANAGE]: 'Create users, assign roles, reset passwords, enable/disable accounts',
-  [PERMISSIONS.LEADS_CREATE]: 'Create new leads',
-  [PERMISSIONS.LEADS_VIEW]: 'View leads',
-  [PERMISSIONS.LEADS_EDIT_OWN]: 'Edit leads you are assigned to / own / created',
-  [PERMISSIONS.LEADS_EDIT_ANY]: 'Edit any lead regardless of ownership',
-  [PERMISSIONS.LEADS_DELETE]: 'Delete (deactivate) leads',
-  [PERMISSIONS.LEADS_ASSIGN]: 'Assign leads to Sales/Delivery reps',
-  [PERMISSIONS.COMPANIES_MANAGE]: 'Create/edit/delete companies',
-  [PERMISSIONS.CONTACTS_MANAGE]: 'Create/edit/delete contacts',
-  [PERMISSIONS.CAMPAIGNS_MANAGE]: 'Create/edit/delete campaigns',
-  [PERMISSIONS.MEETINGS_MANAGE]: 'Schedule and update meetings, record MoM',
-  [PERMISSIONS.TASKS_MANAGE]: 'Create and update tasks',
-  [PERMISSIONS.DOCUMENTS_UPLOAD]: 'Upload documents',
-  [PERMISSIONS.DOCUMENTS_DELETE]: 'Delete documents',
-  [PERMISSIONS.COMMENTS_CREATE]: 'Add comments to leads',
-  [PERMISSIONS.REPORTS_VIEW]: 'View reports',
-  [PERMISSIONS.REPORTS_EXPORT]: 'Export reports to CSV/Excel/PDF',
-  [PERMISSIONS.DASHBOARD_VIEW]: 'View the KPI dashboard',
-  [PERMISSIONS.AUDIT_LOGS_VIEW]: 'View the security audit log',
-  [PERMISSIONS.SETTINGS_MANAGE]: 'Manage system settings',
-  [PERMISSIONS.ROLES_VIEW]: 'View roles & permissions',
-};
 
 /**
  * Every fresh seed needs a tenant to attach its data to. This mirrors exactly what the Phase 1
@@ -62,45 +39,25 @@ async function ensureDefaultOrganization() {
   return created;
 }
 
-async function seedRolesAndPermissions() {
+/**
+ * Seeds the global permission catalog (unchanged by Phase 3 — `permissions` stays fixed, platform-
+ * wide data tied to actual code-enforced gates), then this organization's own copies of the 5
+ * default roles via the same seedDefaultRolesForOrganization() helper organizations.service.ts's
+ * signup() uses for every new tenant, so a freshly-seeded dev/test database and a brand-new
+ * self-service org end up with roles built the exact same way.
+ */
+async function seedRolesAndPermissions(organizationId: string) {
   logger.info('Seeding permissions & roles...');
 
-  const permissionRows = await Promise.all(
+  await Promise.all(
     ALL_PERMISSIONS.map(async (key) => {
       const existing = await db.query.permissions.findFirst({ where: eq(permissions.key, key) });
       if (existing) return existing;
-      const [created] = await db.insert(permissions).values({ key, description: PERMISSION_DESCRIPTIONS[key] }).returning();
-      return created;
+      return db.insert(permissions).values({ key, description: PERMISSION_DESCRIPTIONS[key] }).returning();
     })
   );
-  const permissionByKey = new Map(permissionRows.map((p) => [p.key, p]));
 
-  const roleDescriptions: Record<string, string> = {
-    ADMIN: 'Full system access — manages users, roles, and all data',
-    INSIDE_SALES: 'Creates and qualifies leads, schedules first meetings, assigns to Sales/Delivery',
-    SALES: 'Owns the sales cycle: meetings, proposals, negotiation, close',
-    DELIVERY: 'Owns technical delivery: demos, technical validation, handoff',
-    MANAGEMENT: 'Cross-team visibility, reporting, and analytics',
-  };
-
-  for (const roleName of Object.keys(ROLE_PERMISSIONS) as (keyof typeof ROLE_PERMISSIONS)[]) {
-    let role = await db.query.roles.findFirst({ where: eq(roles.name, roleName as any) });
-    if (!role) {
-      const [created] = await db.insert(roles).values({ name: roleName as any, description: roleDescriptions[roleName] }).returning();
-      role = created;
-    }
-
-    const existingGrants = await db.query.rolePermissions.findMany({ where: eq(rolePermissions.roleId, role.id) });
-    const existingPermissionIds = new Set(existingGrants.map((g) => g.permissionId));
-
-    const toGrant = ROLE_PERMISSIONS[roleName]
-      .map((key) => permissionByKey.get(key))
-      .filter((p): p is NonNullable<typeof p> => !!p && !existingPermissionIds.has(p.id));
-
-    if (toGrant.length) {
-      await db.insert(rolePermissions).values(toGrant.map((p) => ({ roleId: role!.id, permissionId: p.id })));
-    }
-  }
+  await seedDefaultRolesForOrganization(organizationId);
 
   logger.info('Roles & permissions seeded.');
 }
@@ -116,8 +73,11 @@ async function ensureUser(input: {
   const existing = await db.query.users.findFirst({ where: eq(users.email, input.email) });
   if (existing) return existing;
 
-  const role = await db.query.roles.findFirst({ where: eq(roles.name, input.roleName as any) });
-  if (!role) throw new Error(`Role ${input.roleName} not seeded yet`);
+  // Phase 3: roles are tenant-scoped, so this lookup must be scoped to the same organization the
+  // user is being created in — a bare eq(roles.name, ...) would return an arbitrary organization's
+  // role of that name now that names are unique per-org rather than platform-wide.
+  const role = await db.query.roles.findFirst({ where: and(eq(roles.organizationId, input.organizationId), eq(roles.name, input.roleName)) });
+  if (!role) throw new Error(`Role ${input.roleName} not seeded yet for this organization`);
 
   const passwordHash = await argon2.hash(input.password);
   const [user] = await db
@@ -319,7 +279,7 @@ async function seedLeadsFromSpreadsheet(organizationId: string, adminId: string,
 
 async function main() {
   const organization = await ensureDefaultOrganization();
-  await seedRolesAndPermissions();
+  await seedRolesAndPermissions(organization.id);
 
   const admin = await ensureUser({
     email: env.SEED_ADMIN_EMAIL,

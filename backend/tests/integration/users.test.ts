@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import request from 'supertest';
 import { createApp } from '@/app';
-import { TEST_ADMIN, TEST_INSIDE_SALES } from '../setup';
+import { TEST_ADMIN, TEST_INSIDE_SALES, primaryRoleIds } from '../setup';
 
 const app = createApp();
 
@@ -25,7 +25,7 @@ describe('User management is Admin-only (no self-registration)', () => {
     const res = await request(app)
       .post('/api/users')
       .set('Authorization', `Bearer ${insideSalesToken}`)
-      .send({ email: 'new.hire@innocito.com', firstName: 'New', lastName: 'Hire', roleName: 'SALES' });
+      .send({ email: 'new.hire@innocito.com', firstName: 'New', lastName: 'Hire', roleId: primaryRoleIds.SALES });
     expect(res.status).toBe(403);
   });
 
@@ -38,7 +38,7 @@ describe('User management is Admin-only (no self-registration)', () => {
     const res = await request(app)
       .post('/api/users')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ email: 'new.hire@innocito.com', firstName: 'New', lastName: 'Hire', roleName: 'DELIVERY' });
+      .send({ email: 'new.hire@innocito.com', firstName: 'New', lastName: 'Hire', roleId: primaryRoleIds.DELIVERY });
     expect(res.status).toBe(201);
     expect(res.body.data.user.email).toBe('new.hire@innocito.com');
     expect(res.body.data.temporaryPassword).toBeTruthy();
@@ -49,7 +49,7 @@ describe('User management is Admin-only (no self-registration)', () => {
     const res = await request(app)
       .post('/api/users')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ email: 'new.hire@innocito.com', firstName: 'Dup', lastName: 'User', roleName: 'SALES' });
+      .send({ email: 'new.hire@innocito.com', firstName: 'Dup', lastName: 'User', roleId: primaryRoleIds.SALES });
     expect(res.status).toBe(409);
   });
 
@@ -84,12 +84,12 @@ describe('Admin can edit an existing user\'s Email ID', () => {
     const created = await request(app)
       .post('/api/users')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ email: originalEmail, firstName: 'Edit', lastName: 'EmailTarget', roleName: 'SALES' });
+      .send({ email: originalEmail, firstName: 'Edit', lastName: 'EmailTarget', roleId: primaryRoleIds.SALES });
     userId = created.body.data.user.id;
     await request(app)
       .post('/api/users')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ email: secondUserEmail, firstName: 'Other', lastName: 'User', roleName: 'SALES' });
+      .send({ email: secondUserEmail, firstName: 'Other', lastName: 'User', roleId: primaryRoleIds.SALES });
   });
 
   it('a non-Admin cannot edit a user\'s email', async () => {
@@ -135,7 +135,7 @@ describe('Admin can edit an existing user\'s Email ID', () => {
     const reuseOld = await request(app)
       .post('/api/users')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ email: originalEmail, firstName: 'Reuses', lastName: 'OldEmail', roleName: 'SALES' });
+      .send({ email: originalEmail, firstName: 'Reuses', lastName: 'OldEmail', roleId: primaryRoleIds.SALES });
     expect(reuseOld.status).toBe(201);
 
     // A dedicated, filterable audit trail entry exists for the change.
