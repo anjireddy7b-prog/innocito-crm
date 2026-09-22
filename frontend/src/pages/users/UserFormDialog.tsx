@@ -116,7 +116,7 @@ export function UserFormDialog({
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <Label>Email *</Label>
-            <Input type="email" {...register('email')} placeholder="jane.doe@innocito.com" />
+            <Input type="email" {...register('email')} placeholder="jane.doe@sdrreachout.com" />
             {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
             {isEdit && (
               <p className="text-xs text-muted-foreground">
