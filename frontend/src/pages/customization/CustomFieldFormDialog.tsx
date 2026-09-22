@@ -45,12 +45,17 @@ function toDefaults(field?: CustomFieldDefinition | null): FormValues {
  * Phase 4: create/edit dialog for a LEAD custom field definition. Options for SELECT/MULTI_SELECT
  * are entered one per line and split/trimmed client-side — the backend stores (and re-validates)
  * them as a plain string array (see customFields.validation.ts).
+ *
+ * Phase 5: `entityType` is now a prop (default 'LEAD') so this same dialog defines fields on a
+ * custom object (entityType = that object's own key) — see CustomObjectDetailPage.tsx.
  */
 export function CustomFieldFormDialog({
+  entityType = 'LEAD',
   field,
   open,
   onOpenChange,
 }: {
+  entityType?: string;
   field?: CustomFieldDefinition | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -91,6 +96,7 @@ export function CustomFieldFormDialog({
         toast.success('Custom field updated');
       } else {
         await createField.mutateAsync({
+          entityType,
           key: values.key,
           label: values.label,
           fieldType: values.fieldType,

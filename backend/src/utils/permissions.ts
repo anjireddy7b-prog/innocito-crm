@@ -25,6 +25,10 @@ export const PERMISSIONS = {
   // Phase 4: rename/reorder/toggle won-lost-terminal flags on pipeline stages. Creating/deleting
   // brand-new stages is out of scope this phase (see db/schema.ts's pipelineStages table comment).
   PIPELINE_STAGES_MANAGE: 'pipeline_stages:manage',
+  // Phase 5: create/edit/delete tenant-defined custom object types and their records. ADMIN-only
+  // by default, same precedent as CUSTOM_FIELDS_MANAGE/PIPELINE_STAGES_MANAGE — not extended to
+  // any other default role this phase.
+  CUSTOM_OBJECTS_MANAGE: 'custom_objects:manage',
 
   LEADS_CREATE: 'leads:create',
   LEADS_VIEW: 'leads:view',
@@ -121,6 +125,7 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionKey, string> = {
   [PERMISSIONS.COMMENTS_MANAGE_ANY]: "Edit or delete any user's comment, not just your own",
   [PERMISSIONS.CUSTOM_FIELDS_MANAGE]: 'Create, rename, and delete custom fields on leads',
   [PERMISSIONS.PIPELINE_STAGES_MANAGE]: 'Rename, reorder, and edit pipeline stage flags',
+  [PERMISSIONS.CUSTOM_OBJECTS_MANAGE]: 'Create, edit, and delete custom object types and their records',
   [PERMISSIONS.LEADS_CREATE]: 'Create new leads',
   [PERMISSIONS.LEADS_VIEW]: 'View leads',
   [PERMISSIONS.LEADS_EDIT_OWN]: 'Edit leads you are assigned to / own / created',

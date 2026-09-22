@@ -1,23 +1,28 @@
 import { z } from 'zod';
 
-// MVP scope (Phase 4): `entityType` on the schema is generic (see db/schema.ts's
-// customFieldDefinitions table comment) so a future phase can extend beyond leads without a
-// migration, but validation/UI only ever accepts 'LEAD' today.
-export const CUSTOM_FIELD_ENTITY_TYPES = ['LEAD'] as const;
+// Phase 4 gave `entityType` on the schema a fixed shape but only ever validated it as the
+// literal `'LEAD'`. Phase 5 (custom objects) reuses this exact table/engine for tenant-defined
+// object types — see db/schema.ts's customObjectDefinitions comment — so `entityType` now also
+// accepts any custom-object key shape (lowercase, checked against that org's actual defined
+// objects in the service layer, since a Zod schema alone can't do that DB lookup). `'LEAD'` stays
+// uppercase specifically so it can never collide with a lowercase custom-object key.
 export const CUSTOM_FIELD_TYPES = ['TEXT', 'TEXTAREA', 'NUMBER', 'DATE', 'BOOLEAN', 'SELECT', 'MULTI_SELECT'] as const;
 export type CustomFieldType = (typeof CUSTOM_FIELD_TYPES)[number];
 
 const CHOICE_TYPES: CustomFieldType[] = ['SELECT', 'MULTI_SELECT'];
 
-// Machine name stored as the JSON key on leads.customFields — kept restrictive (lowercase,
-// digits, underscores) so it's always safe to use as an object key and never collides with
-// anything JS/JSON-reserved.
-const keySchema = z
+// Machine name stored as the JSON key on leads.customFields (or a custom object record's `data`)
+// — kept restrictive (lowercase, digits, underscores) so it's always safe to use as an object key
+// and never collides with anything JS/JSON-reserved. Also reused, unchanged, as the shape for a
+// custom object's own `key` (see customObjects.validation.ts).
+export const keySchema = z
   .string()
   .trim()
   .min(1)
   .max(100)
   .regex(/^[a-z][a-z0-9_]*$/, 'Key must start with a lowercase letter and contain only lowercase letters, numbers, and underscores');
+
+export const entityTypeSchema = z.union([z.literal('LEAD'), keySchema]);
 
 function checkOptionsForChoiceTypes(data: { fieldType: CustomFieldType; options?: string[] | null }, ctx: z.RefinementCtx) {
   if (CHOICE_TYPES.includes(data.fieldType) && (!data.options || data.options.length === 0)) {
@@ -26,7 +31,7 @@ function checkOptionsForChoiceTypes(data: { fieldType: CustomFieldType; options?
 }
 
 export const listCustomFieldDefinitionsQuerySchema = z.object({
-  entityType: z.enum(CUSTOM_FIELD_ENTITY_TYPES).default('LEAD'),
+  entityType: entityTypeSchema.default('LEAD'),
 });
 
 // key/fieldType/entityType are set once at creation and never editable afterward — renaming a
@@ -34,7 +39,7 @@ export const listCustomFieldDefinitionsQuerySchema = z.object({
 // existing leads' `customFields` JSONB bags, which have no migration path of their own.
 export const createCustomFieldDefinitionSchema = z
   .object({
-    entityType: z.enum(CUSTOM_FIELD_ENTITY_TYPES).default('LEAD'),
+    entityType: entityTypeSchema.default('LEAD'),
     key: keySchema,
     label: z.string().trim().min(1).max(200),
     fieldType: z.enum(CUSTOM_FIELD_TYPES),

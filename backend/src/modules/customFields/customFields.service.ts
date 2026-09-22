@@ -1,7 +1,7 @@
 import { Request } from 'express';
 import { and, asc, eq } from 'drizzle-orm';
 import { db } from '@/config/db';
-import { customFieldDefinitions } from '@/db/schema';
+import { customFieldDefinitions, customObjectDefinitions } from '@/db/schema';
 import { ApiError } from '@/utils/ApiError';
 import { recordAudit } from '@/utils/auditLogger';
 import { orgId } from '@/utils/tenant';
@@ -29,6 +29,17 @@ export async function createCustomFieldDefinition(
   input: { entityType: string; key: string; label: string; fieldType: CustomFieldType; options?: string[] | null; required: boolean; sortOrder: number }
 ): Promise<CustomFieldDefinition> {
   const org = orgId(req);
+
+  // Phase 5: 'LEAD' is always valid (built in), but any other entityType must be a custom
+  // object this org has actually defined — otherwise a caller could attach fields to a
+  // custom-object key that doesn't exist (typo, deleted object, wrong org).
+  if (input.entityType !== 'LEAD') {
+    const objectDefinition = await db.query.customObjectDefinitions.findFirst({
+      where: and(eq(customObjectDefinitions.organizationId, org), eq(customObjectDefinitions.key, input.entityType)),
+    });
+    if (!objectDefinition) throw ApiError.notFound(`Custom object "${input.entityType}" not found for this organization`);
+  }
+
   const existing = await db.query.customFieldDefinitions.findFirst({
     where: and(
       eq(customFieldDefinitions.organizationId, org),

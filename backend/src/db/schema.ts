@@ -321,6 +321,59 @@ export const pipelineStages = pgTable(
   ]
 );
 
+// ----------------------------------------------------------------------------
+// Customization engine, part 2 (Phase 5) — custom objects
+// ----------------------------------------------------------------------------
+// Per the Architecture Report's Section H ("Custom objects follow as a further-out phase:
+// tenant-defined entities with their own schema-lite definition, reusing the same
+// field-definition engine") and Section K's superseding 15-phase breakdown (Phase 5 = custom
+// objects, split out from Phase 4's custom fields). A custom object is a brand-new, tenant-
+// defined entity with NO typed columns of its own — every field on it is a row in
+// `customFieldDefinitions` with `entityType` set to this object's own `key` (reusing that table
+// and its validation/storage engine exactly as-is, with zero changes needed there: entityType was
+// already schema-generic, only ever UI/validation-restricted to 'LEAD'). `key` is reserved
+// against 'LEAD' (and any other future built-in entity type) in customObjects.validation.ts so a
+// custom object can never shadow a real one.
+export const customObjectDefinitions = pgTable(
+  'custom_object_definitions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
+    // Doubles as the `entityType` value on this object's own custom_field_definitions rows.
+    key: varchar('key', { length: 100 }).notNull(),
+    singularLabel: varchar('singular_label', { length: 150 }).notNull(),
+    pluralLabel: varchar('plural_label', { length: 150 }).notNull(),
+    description: text('description'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('custom_object_definitions_org_idx').on(t.organizationId),
+    uniqueIndex('custom_object_definitions_org_key_unique').on(t.organizationId, t.key),
+  ]
+);
+
+// A record of a custom object. Unlike `leads.customFields` (a JSONB bag layered ALONGSIDE typed
+// columns that remain the source of truth), a custom object has no typed columns at all — `data`
+// is the entire record. Still JSONB rather than EAV rows for the same reasons documented on
+// `customFieldDefinitions` above: one query per record, small field counts, no join fan-out.
+export const customObjectRecords = pgTable(
+  'custom_object_records',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
+    objectDefinitionId: uuid('object_definition_id').notNull().references(() => customObjectDefinitions.id, { onDelete: 'cascade' }),
+    data: jsonb('data').notNull().default(sql`'{}'::jsonb`),
+    createdById: uuid('created_by_id').references(() => users.id),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('custom_object_records_org_idx').on(t.organizationId),
+    index('custom_object_records_definition_idx').on(t.objectDefinitionId),
+  ]
+);
+
 export const leads = pgTable(
   'leads',
   {
@@ -579,6 +632,8 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
   campaigns: many(campaigns),
   customFieldDefinitions: many(customFieldDefinitions),
   pipelineStages: many(pipelineStages),
+  customObjectDefinitions: many(customObjectDefinitions),
+  customObjectRecords: many(customObjectRecords),
 }));
 
 export const customFieldDefinitionsRelations = relations(customFieldDefinitions, ({ one }) => ({
@@ -587,6 +642,17 @@ export const customFieldDefinitionsRelations = relations(customFieldDefinitions,
 
 export const pipelineStagesRelations = relations(pipelineStages, ({ one }) => ({
   organization: one(organizations, { fields: [pipelineStages.organizationId], references: [organizations.id] }),
+}));
+
+export const customObjectDefinitionsRelations = relations(customObjectDefinitions, ({ one, many }) => ({
+  organization: one(organizations, { fields: [customObjectDefinitions.organizationId], references: [organizations.id] }),
+  records: many(customObjectRecords),
+}));
+
+export const customObjectRecordsRelations = relations(customObjectRecords, ({ one }) => ({
+  organization: one(organizations, { fields: [customObjectRecords.organizationId], references: [organizations.id] }),
+  objectDefinition: one(customObjectDefinitions, { fields: [customObjectRecords.objectDefinitionId], references: [customObjectDefinitions.id] }),
+  createdBy: one(users, { fields: [customObjectRecords.createdById], references: [users.id] }),
 }));
 
 export const rolesRelations = relations(roles, ({ one, many }) => ({

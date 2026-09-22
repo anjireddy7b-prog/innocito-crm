@@ -10,8 +10,11 @@ import { apiErrorMessage } from '@/lib/api';
 import { humanizeEnum } from '@/lib/utils';
 import { CustomFieldFormDialog } from './CustomFieldFormDialog';
 
-export function CustomFieldsTab({ canManage }: { canManage: boolean }) {
-  const { data: fields, isLoading } = useCustomFieldDefinitions('LEAD');
+// Phase 5: `entityType` is now a prop (default 'LEAD', unchanged for the Customization page's own
+// "Custom Fields" tab) so this exact component also renders a custom object's own field list —
+// see CustomObjectDetailPage.tsx, which passes the object's `key`.
+export function CustomFieldsTab({ canManage, entityType = 'LEAD' }: { canManage: boolean; entityType?: string }) {
+  const { data: fields, isLoading } = useCustomFieldDefinitions(entityType);
   const deleteField = useDeleteCustomFieldDefinition();
   const [createOpen, setCreateOpen] = useState(false);
   const [editField, setEditField] = useState<CustomFieldDefinition | null>(null);
@@ -58,8 +61,8 @@ export function CustomFieldsTab({ canManage }: { canManage: boolean }) {
 
       {canManage && (
         <>
-          <CustomFieldFormDialog open={createOpen} onOpenChange={setCreateOpen} />
-          <CustomFieldFormDialog field={editField} open={!!editField} onOpenChange={(o) => !o && setEditField(null)} />
+          <CustomFieldFormDialog entityType={entityType} open={createOpen} onOpenChange={setCreateOpen} />
+          <CustomFieldFormDialog entityType={entityType} field={editField} open={!!editField} onOpenChange={(o) => !o && setEditField(null)} />
           <ConfirmDialog
             open={!!deleteTarget}
             onOpenChange={(o) => !o && setDeleteTarget(null)}

@@ -15,15 +15,26 @@ import { useCustomFieldDefinitions, CustomFieldDefinition } from '@/api/customFi
  * onChange contract here is a plain `Record<string, unknown>` so it stays decoupled from
  * whatever specific FormValues type each parent form otherwise uses, and each parent wires it in
  * with a single Controller on its own `customFields` field.
+ *
+ * Phase 5: `entityType` is now a prop (default 'LEAD', unchanged for every existing caller) so the
+ * exact same section can render a custom object record's own dynamic fields — see
+ * CustomObjectRecordFormDialog.tsx, which passes the object's `key` as entityType.
  */
 export function CustomFieldsSection({
+  entityType = 'LEAD',
   value,
   onChange,
+  hideHeading = false,
 }: {
+  entityType?: string;
   value: Record<string, unknown> | undefined;
   onChange: (next: Record<string, unknown>) => void;
+  // A custom object record (see CustomObjectRecordFormDialog.tsx) has no other fields alongside
+  // these — a "Custom Fields" heading above the record's own entire field set is redundant there,
+  // unlike on a lead form where it visually separates these from the built-in typed fields.
+  hideHeading?: boolean;
 }) {
-  const { data: definitions, isLoading } = useCustomFieldDefinitions('LEAD');
+  const { data: definitions, isLoading } = useCustomFieldDefinitions(entityType);
 
   if (isLoading || !definitions || definitions.length === 0) return null;
 
@@ -41,7 +52,7 @@ export function CustomFieldsSection({
 
   return (
     <div className="space-y-4 sm:col-span-2">
-      <Label className="text-sm font-semibold text-muted-foreground">Custom Fields</Label>
+      {!hideHeading && <Label className="text-sm font-semibold text-muted-foreground">Custom Fields</Label>}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {definitions.map((def) => (
           <CustomFieldInput key={def.id} definition={def} value={bag[def.key]} onChange={(v) => setField(def.key, v)} />

@@ -25,6 +25,7 @@ const ReportsPage = lazy(() => import('@/pages/ReportsPage'));
 const UsersPage = lazy(() => import('@/pages/UsersPage'));
 const RolesPage = lazy(() => import('@/pages/roles/RolesPage'));
 const CustomizationPage = lazy(() => import('@/pages/customization/CustomizationPage'));
+const CustomObjectDetailPage = lazy(() => import('@/pages/customObjects/CustomObjectDetailPage'));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
 const AuditLogsPage = lazy(() => import('@/pages/AuditLogsPage'));
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'));
@@ -108,6 +109,16 @@ export default function App() {
               // two separate permissions.
               <RequirePermission permission={PERMISSIONS.CUSTOM_FIELDS_MANAGE}>
                 <CustomizationPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/objects/:definitionId"
+            element={
+              // Phase 5: gated on CUSTOM_OBJECTS_MANAGE — same "one permission covers the whole
+              // page" simplification as /customization's own route guard.
+              <RequirePermission permission={PERMISSIONS.CUSTOM_OBJECTS_MANAGE}>
+                <CustomObjectDetailPage />
               </RequirePermission>
             }
           />
