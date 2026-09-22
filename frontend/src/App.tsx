@@ -24,6 +24,7 @@ const ActivitiesPage = lazy(() => import('@/pages/ActivitiesPage'));
 const ReportsPage = lazy(() => import('@/pages/ReportsPage'));
 const UsersPage = lazy(() => import('@/pages/UsersPage'));
 const RolesPage = lazy(() => import('@/pages/roles/RolesPage'));
+const CustomizationPage = lazy(() => import('@/pages/customization/CustomizationPage'));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
 const AuditLogsPage = lazy(() => import('@/pages/AuditLogsPage'));
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'));
@@ -96,6 +97,17 @@ export default function App() {
             element={
               <RequirePermission permission={PERMISSIONS.ROLES_VIEW}>
                 <RolesPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/customization"
+            element={
+              // Phase 4: gated on CUSTOM_FIELDS_MANAGE — see CustomizationPage.tsx's own comment
+              // for why one permission is enough at the route level even though the page covers
+              // two separate permissions.
+              <RequirePermission permission={PERMISSIONS.CUSTOM_FIELDS_MANAGE}>
+                <CustomizationPage />
               </RequirePermission>
             }
           />

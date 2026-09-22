@@ -5,6 +5,7 @@ import { db, pool } from '@/config/db';
 import { organizations, permissions, users, campaigns } from '@/db/schema';
 import { ALL_PERMISSIONS } from '@/utils/permissions';
 import { seedDefaultRolesForOrganization } from '@/utils/defaultRoles';
+import { seedDefaultPipelineStagesForOrganization } from '@/utils/defaultPipelineStages';
 import { NEW_CAMPAIGN_SEEDS } from '@/utils/leadFormOptions';
 
 export const TEST_ADMIN = { email: 'admin@innocito.com', password: 'ChangeMe!123' };
@@ -27,6 +28,11 @@ export let secondaryOrgId: string;
 export let primaryRoleIds: Record<string, string>;
 export let secondaryRoleIds: Record<string, string>;
 
+// Phase 4: key -> pipeline stage id, one independent set per organization (see
+// utils/defaultPipelineStages.ts) — same "own copy per org" discipline as roles above.
+export let primaryPipelineStageIds: Record<string, string>;
+export let secondaryPipelineStageIds: Record<string, string>;
+
 async function seedMinimal() {
   const [primaryOrg] = await db.insert(organizations).values({ name: 'Test Org', slug: 'test-org' }).returning();
   primaryOrgId = primaryOrg.id;
@@ -42,6 +48,11 @@ async function seedMinimal() {
   const secondaryRoles = await seedDefaultRolesForOrganization(secondaryOrgId);
   primaryRoleIds = Object.fromEntries([...primaryRoles.entries()].map(([name, role]) => [name, role.id]));
   secondaryRoleIds = Object.fromEntries([...secondaryRoles.entries()].map(([name, role]) => [name, role.id]));
+
+  const primaryStages = await seedDefaultPipelineStagesForOrganization(primaryOrgId);
+  const secondaryStages = await seedDefaultPipelineStagesForOrganization(secondaryOrgId);
+  primaryPipelineStageIds = Object.fromEntries(primaryStages.map((s) => [s.key, s.id]));
+  secondaryPipelineStageIds = Object.fromEntries(secondaryStages.map((s) => [s.key, s.id]));
 
   await db.insert(users).values({
     organizationId: primaryOrgId,
@@ -100,7 +111,7 @@ beforeAll(async () => {
   const tableNames = [
     'audit_logs', 'notifications', 'activities', 'comments', 'documents', 'tasks', 'meetings',
     'leads', 'campaigns', 'contacts', 'companies', 'refresh_tokens', 'users', 'role_permissions',
-    'permissions', 'roles', 'organizations',
+    'permissions', 'roles', 'custom_field_definitions', 'pipeline_stages', 'organizations',
   ];
   await pool.query(`TRUNCATE TABLE ${tableNames.join(', ')} RESTART IDENTITY CASCADE`);
   await seedMinimal();

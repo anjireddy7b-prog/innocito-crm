@@ -12,6 +12,7 @@ import { cache } from '@/config/redis';
 import { PERMISSIONS } from '@/utils/permissions';
 import { normalizeWebsite } from '@/utils/leadFormOptions';
 import { orgId } from '@/utils/tenant';
+import { validateAndNormalizeCustomFields } from '@/modules/customFields/customFields.service';
 
 /**
  * Combines a calendar date with an "HH:MM" time-of-day into one Date, the same "naive wall-clock,
@@ -219,6 +220,11 @@ async function resolveCompanyAndContact(req: Request, input: any) {
 export async function createLead(req: Request, input: any) {
   const org = orgId(req);
   const { companyId, contactId } = await resolveCompanyAndContact(req, input);
+  // Phase 4: validated/normalized against this org's LEAD field definitions — rejects unknown
+  // keys, checks per-type shape, and enforces required fields (see customFields.service.ts).
+  // Called even when input.customFields is undefined, so a required custom field can't be
+  // silently skipped just because the caller never mentioned it.
+  const customFields = await validateAndNormalizeCustomFields(org, 'LEAD', input.customFields);
 
   const [created] = await db
     .insert(leads)
@@ -236,6 +242,7 @@ export async function createLead(req: Request, input: any) {
       probability: input.probability,
       expectedCloseDate: input.expectedCloseDate,
       tags: input.tags ?? [],
+      customFields,
       assignedToId: input.assignedToId,
       currentOwnerId: input.currentOwnerId,
       sdrId: input.sdrId,
@@ -316,6 +323,12 @@ export async function updateLead(req: Request, id: string, input: any) {
     ? await resolveCompanyAndContact(req, input)
     : { companyId: undefined, contactId: undefined };
 
+  // Phase 4: full-replace, same as `tags` just below — only re-validated/stored when the caller
+  // actually included a customFields key in the request, so a PATCH that doesn't mention custom
+  // fields at all leaves the lead's existing bag untouched rather than wiping it to {}.
+  const customFields =
+    input.customFields !== undefined ? await validateAndNormalizeCustomFields(org, 'LEAD', input.customFields) : undefined;
+
   await db
     .update(leads)
     .set({
@@ -332,6 +345,7 @@ export async function updateLead(req: Request, id: string, input: any) {
       actualCloseDate: input.actualCloseDate,
       lossReason: input.lossReason,
       tags: input.tags,
+      ...(customFields !== undefined ? { customFields } : {}),
       // Note: assignedToId/currentOwnerId are intentionally NOT settable here — they go through
       // assignLead() below, which fires its own notification/audit trail. sdrId has no equivalent
       // dedicated endpoint (yet), so it's safe to fold into the general update.

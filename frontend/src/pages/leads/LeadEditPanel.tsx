@@ -13,6 +13,7 @@ import { WebsiteField } from '@/components/shared/WebsiteField';
 import { CompanyDetailsFields } from '@/components/shared/CompanyDetailsFields';
 import { MeetingScheduleFields } from '@/components/shared/MeetingScheduleFields';
 import { SdrAndReceivedDateFields } from '@/components/shared/SdrAndReceivedDateFields';
+import { CustomFieldsSection } from '@/components/shared/CustomFieldsSection';
 import { useUpdateLead } from '@/api/leads';
 import { useCampaigns } from '@/api/campaigns';
 import { apiErrorMessage } from '@/lib/api';
@@ -42,6 +43,9 @@ const schema = z
     nextSteps: z.string().optional(),
     mom: z.string().optional(),
     emailResponse: z.string().optional(),
+    // Phase 4: admin-defined extra fields (see components/shared/CustomFieldsSection.tsx) — same
+    // untyped record as LeadFormDialog.tsx's create form; per-key validation is server-side.
+    customFields: z.record(z.unknown()).optional(),
   })
   .merge(companyDetailsSchema)
   .merge(meetingScheduleSchema)
@@ -71,6 +75,10 @@ function toDefaults(lead: Lead): FormValues {
     nextSteps: lead.nextSteps ?? '',
     mom: lead.mom ?? '',
     emailResponse: lead.emailResponse ?? '',
+    // Full-replace on save, matching the backend's own `tags`-like semantics for this field (see
+    // leads.service.ts's updateLead) — pre-populated from the lead's current bag so an edit that
+    // doesn't touch a given custom field doesn't lose its existing value.
+    customFields: lead.customFields ?? {},
     // Pre-populated from the linked company's current values — same fields, same curated
     // dropdowns, same validation as the New Lead form's Company details block. Saving here
     // updates that (possibly shared) company record directly, unlike lead-creation time where
@@ -126,6 +134,7 @@ export function LeadEditPanel({ lead, open, onOpenChange }: { lead: Lead; open: 
         nextSteps: values.nextSteps || undefined,
         mom: values.mom || undefined,
         emailResponse: values.emailResponse || undefined,
+        customFields: values.customFields,
         company:
           lead.company && hasCompanyDetails
             ? {
@@ -262,6 +271,12 @@ export function LeadEditPanel({ lead, open, onOpenChange }: { lead: Lead; open: 
             <Label>Email Response</Label>
             <Textarea rows={2} {...register('emailResponse')} placeholder="Additional notes…" />
           </div>
+
+          <Controller
+            control={control}
+            name="customFields"
+            render={({ field }) => <CustomFieldsSection value={field.value} onChange={field.onChange} />}
+          />
 
           <DialogFooter className="sm:col-span-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>

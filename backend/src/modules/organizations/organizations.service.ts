@@ -8,6 +8,7 @@ import { orgId } from '@/utils/tenant';
 import { recordAudit } from '@/utils/auditLogger';
 import { signAccessToken, generateRefreshTokenValue, hashToken, refreshExpiryDate } from '@/utils/tokens';
 import { seedDefaultRolesForOrganization } from '@/utils/defaultRoles';
+import { seedDefaultPipelineStagesForOrganization } from '@/utils/defaultPipelineStages';
 
 /** Slugify an organization name into the same shape `slugSchema` in organizations.validation.ts
  * accepts: lowercase letters/digits separated by single hyphens, no leading/trailing hyphen. */
@@ -86,6 +87,12 @@ export async function signup(
     with: { permission: true },
   });
   const adminPermissions = adminPermissionRows.map((rp) => rp.permission.key);
+
+  // Phase 4: every organization also gets its own 13 pipeline-stage rows from the moment it's
+  // created (see utils/defaultPipelineStages.ts) — the same "seed on signup" pattern as roles
+  // above, so a self-service org's Roles & Permissions and Pipeline Stages settings are both
+  // populated immediately rather than only for orgs created before this phase shipped.
+  await seedDefaultPipelineStagesForOrganization(organization.id);
 
   const passwordHash = await argon2.hash(input.password);
   const [user] = await db

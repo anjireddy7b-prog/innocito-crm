@@ -5,6 +5,8 @@ export const PERMISSIONS = {
   ROLES_MANAGE: 'roles:manage',
   ORGANIZATION_MANAGE: 'organization:manage',
   COMMENTS_MANAGE_ANY: 'comments:manage_any',
+  CUSTOM_FIELDS_MANAGE: 'custom_fields:manage',
+  PIPELINE_STAGES_MANAGE: 'pipeline_stages:manage',
 
   LEADS_CREATE: 'leads:create',
   LEADS_VIEW: 'leads:view',

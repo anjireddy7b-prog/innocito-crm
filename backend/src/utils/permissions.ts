@@ -17,6 +17,14 @@ export const PERMISSIONS = {
   // Phase 3: edit or delete another user's comment, not just your own (previously a hardcoded
   // `role !== 'ADMIN'` check in comments.service.ts).
   COMMENTS_MANAGE_ANY: 'comments:manage_any',
+  // Phase 4: create/rename/delete custom field definitions (currently LEAD-only — see
+  // db/schema.ts's customFieldDefinitions table). Viewing field definitions (to render them on a
+  // lead form) is covered by LEADS_VIEW/LEADS_CREATE, not gated separately — only changing the
+  // definitions themselves needs this.
+  CUSTOM_FIELDS_MANAGE: 'custom_fields:manage',
+  // Phase 4: rename/reorder/toggle won-lost-terminal flags on pipeline stages. Creating/deleting
+  // brand-new stages is out of scope this phase (see db/schema.ts's pipelineStages table comment).
+  PIPELINE_STAGES_MANAGE: 'pipeline_stages:manage',
 
   LEADS_CREATE: 'leads:create',
   LEADS_VIEW: 'leads:view',
@@ -111,6 +119,8 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionKey, string> = {
   [PERMISSIONS.ROLES_MANAGE]: 'Create, rename, and delete roles; edit their permission grants',
   [PERMISSIONS.ORGANIZATION_MANAGE]: "Edit the organization's name and URL slug",
   [PERMISSIONS.COMMENTS_MANAGE_ANY]: "Edit or delete any user's comment, not just your own",
+  [PERMISSIONS.CUSTOM_FIELDS_MANAGE]: 'Create, rename, and delete custom fields on leads',
+  [PERMISSIONS.PIPELINE_STAGES_MANAGE]: 'Rename, reorder, and edit pipeline stage flags',
   [PERMISSIONS.LEADS_CREATE]: 'Create new leads',
   [PERMISSIONS.LEADS_VIEW]: 'View leads',
   [PERMISSIONS.LEADS_EDIT_OWN]: 'Edit leads you are assigned to / own / created',

@@ -79,6 +79,13 @@ export const createLeadSchema = z.object({
   emailResponse: z.string().max(5000).optional().nullable(),
   mom: z.string().max(10000).optional().nullable(),
   nextSteps: z.string().max(2000).optional().nullable(),
+
+  // Phase 4: admin-defined extra fields (see db/schema.ts's customFieldDefinitions table).
+  // Shape-checked here only as "a plain object of unknown values" — the actual per-key
+  // validation (unknown-key rejection, per-type checking, required-field enforcement) happens in
+  // customFields.service.ts's validateAndNormalizeCustomFields(), which needs a DB lookup of this
+  // org's field definitions that a Zod schema alone can't do.
+  customFields: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const updateLeadSchema = createLeadSchema.partial().extend({

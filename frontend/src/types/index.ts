@@ -76,6 +76,10 @@ export interface Lead {
   actualCloseDate: string | null;
   lossReason: string | null;
   tags: string[];
+  // Phase 4: admin-defined extra fields (see api/customFields.ts). Always present (defaults to
+  // {} at the DB layer), but typed loosely since its actual shape is org-defined data, not a
+  // fixed schema.
+  customFields: Record<string, unknown>;
   assignedToId: string | null;
   currentOwnerId: string | null;
   createdById: string | null;

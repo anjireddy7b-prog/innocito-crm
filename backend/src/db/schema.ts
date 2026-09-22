@@ -48,6 +48,13 @@ export const auditActionEnum = pgEnum('audit_action', [
   'CREATE', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT', 'LOGIN_FAILED', 'PASSWORD_RESET',
   'ROLE_CHANGED', 'STATUS_CHANGED', 'ASSIGNMENT_CHANGED', 'EXPORT', 'EMAIL_CHANGED',
 ]);
+// Phase 4: custom fields engine. `entityType` on custom_field_definitions is schema-generic
+// (varchar, not an enum limited to LEAD) so a future phase can extend to companies/contacts
+// without a migration — but MVP scope only validates/renders 'LEAD' (see
+// customFields.validation.ts and the frontend CustomFieldsSection component).
+export const customFieldTypeEnum = pgEnum('custom_field_type', [
+  'TEXT', 'TEXTAREA', 'NUMBER', 'DATE', 'BOOLEAN', 'SELECT', 'MULTI_SELECT',
+]);
 
 // ----------------------------------------------------------------------------
 // Multi-tenancy
@@ -250,6 +257,70 @@ export const campaigns = pgTable(
   ]
 );
 
+// ----------------------------------------------------------------------------
+// Customization engine (Phase 4) — custom fields + configurable pipeline stages
+// ----------------------------------------------------------------------------
+// Tenant-scoped definitions of admin-defined extra fields. Values themselves live in a JSONB
+// `customFields` column on the entity table (see `leads.customFields` below) rather than an
+// EAV value table — chosen over EAV because every consumer of a lead already fetches the whole
+// row in one query (no per-field joins needed), the value set per lead is small, and Postgres
+// JSONB indexing/containment queries are sufficient for this app's filtering needs. This is
+// purely additive: existing typed columns on `leads` remain the source of truth for every
+// current field, and `customFields` only ever holds admin-defined extras layered on top.
+export const customFieldDefinitions = pgTable(
+  'custom_field_definitions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
+    // Schema-generic for future entity types; MVP validation/UI only supports 'LEAD' (see comment
+    // on customFieldTypeEnum above).
+    entityType: varchar('entity_type', { length: 50 }).notNull().default('LEAD'),
+    key: varchar('key', { length: 100 }).notNull(),
+    label: varchar('label', { length: 200 }).notNull(),
+    fieldType: customFieldTypeEnum('field_type').notNull(),
+    // Choice list for SELECT/MULTI_SELECT, e.g. ["Small","Medium","Large"]. Null for other types.
+    options: jsonb('options'),
+    required: boolean('required').notNull().default(false),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('custom_field_definitions_org_idx').on(t.organizationId),
+    uniqueIndex('custom_field_definitions_org_entity_key_unique').on(t.organizationId, t.entityType, t.key),
+  ]
+);
+
+// Tenant-scoped, admin-editable metadata mirroring the current hardcoded `lead_status` enum.
+// This phase seeds one row per org per existing enum value (see utils/defaultPipelineStages.ts)
+// and exposes them for renaming/reordering/toggling flags — `leads.status` itself is
+// deliberately NOT cut over to be driven by this table yet (that would require changing the
+// column's type from an enum to a free-text key referencing this table, plus updating every
+// place that branches on a specific status string). Creating/deleting brand-new stages is out
+// of scope for this phase for the same reason; this is a documented, deliberate scope limit —
+// see the Architecture Report's Phase 4 completion section.
+export const pipelineStages = pgTable(
+  'pipeline_stages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
+    // Mirrors a `lead_status` enum value (e.g. "MEETING_SCHEDULED") — not itself an enum, since
+    // future phases may allow custom keys once leads.status is cut over.
+    key: varchar('key', { length: 100 }).notNull(),
+    label: varchar('label', { length: 150 }).notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+    isWon: boolean('is_won').notNull().default(false),
+    isLost: boolean('is_lost').notNull().default(false),
+    isTerminal: boolean('is_terminal').notNull().default(false),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('pipeline_stages_org_idx').on(t.organizationId),
+    uniqueIndex('pipeline_stages_org_key_unique').on(t.organizationId, t.key),
+  ]
+);
+
 export const leads = pgTable(
   'leads',
   {
@@ -271,6 +342,11 @@ export const leads = pgTable(
     actualCloseDate: timestamp('actual_close_date'),
     lossReason: text('loss_reason'),
     tags: text('tags').array().notNull().default(sql`'{}'::text[]`),
+    // Phase 4: admin-defined extra fields, keyed by custom_field_definitions.key. Purely
+    // additive — every existing typed column above remains the source of truth for its own
+    // data; this bag only ever holds values for fields an org admin has defined. Full-replace
+    // on update (matching the `tags` field's own pattern), not a merge — see leads.service.ts.
+    customFields: jsonb('custom_fields').notNull().default(sql`'{}'::jsonb`),
 
     assignedToId: uuid('assigned_to_id').references(() => users.id),
     currentOwnerId: uuid('current_owner_id').references(() => users.id),
@@ -501,6 +577,16 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
   contacts: many(contacts),
   leads: many(leads),
   campaigns: many(campaigns),
+  customFieldDefinitions: many(customFieldDefinitions),
+  pipelineStages: many(pipelineStages),
+}));
+
+export const customFieldDefinitionsRelations = relations(customFieldDefinitions, ({ one }) => ({
+  organization: one(organizations, { fields: [customFieldDefinitions.organizationId], references: [organizations.id] }),
+}));
+
+export const pipelineStagesRelations = relations(pipelineStages, ({ one }) => ({
+  organization: one(organizations, { fields: [pipelineStages.organizationId], references: [organizations.id] }),
 }));
 
 export const rolesRelations = relations(roles, ({ one, many }) => ({

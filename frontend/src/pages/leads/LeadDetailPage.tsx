@@ -14,6 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { useLead, useChangeLeadStatus, useDeleteLead } from '@/api/leads';
+import { useCustomFieldDefinitions } from '@/api/customFields';
 import { useAuthStore } from '@/store/authStore';
 import { PERMISSIONS } from '@/lib/permissions';
 import { apiErrorMessage } from '@/lib/api';
@@ -35,6 +36,9 @@ export default function LeadDetailPage() {
   const deleteLead = useDeleteLead();
   const hasRole = useAuthStore((s) => s.hasRole);
   const hasPermission = useAuthStore((s) => s.hasPermission);
+  // Phase 4: field labels/order for whatever this lead's customFields bag holds — fetched
+  // unconditionally (before the loading early-return below) since hooks can't be conditional.
+  const { data: customFieldDefinitions } = useCustomFieldDefinitions('LEAD');
 
   const [assignOpen, setAssignOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -181,6 +185,31 @@ export default function LeadDetailPage() {
               </CardContent>
             </Card>
           )}
+
+          {(() => {
+            const populated = (customFieldDefinitions ?? []).filter((def) => {
+              const v = lead.customFields?.[def.key];
+              return v !== undefined && v !== null && v !== '';
+            });
+            if (!populated.length) return null;
+            return (
+              <Card>
+                <CardHeader><CardTitle>Custom Fields</CardTitle></CardHeader>
+                <CardContent className="space-y-2 text-sm">
+                  {populated.map((def) => {
+                    const v = lead.customFields[def.key];
+                    const display = Array.isArray(v) ? v.join(', ') : typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v);
+                    return (
+                      <div key={def.key} className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">{def.label}</span>
+                        <span className="text-right font-medium">{display}</span>
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+            );
+          })()}
         </div>
 
         <div className="lg:col-span-2">

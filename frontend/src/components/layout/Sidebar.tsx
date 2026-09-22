@@ -3,6 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Target, Building2, Users, Megaphone, Activity, CalendarClock, ListChecks,
   FileText, BarChart3, UserCog, ShieldCheck, KeyRound, Settings, ChevronLeft, ChevronRight,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useUIStore } from '@/store/uiStore';
@@ -34,6 +35,9 @@ const NAV_ITEMS: NavItem[] = [
   // shows this item to any custom role granted the same permission.
   { label: 'Users', to: '/users', icon: UserCog, permission: PERMISSIONS.USERS_MANAGE },
   { label: 'Roles & Permissions', to: '/roles', icon: KeyRound, permission: PERMISSIONS.ROLES_VIEW },
+  // Phase 4: same "gate on the broader of the two permissions this page covers" simplification
+  // as CustomizationPage.tsx's route guard — see that file's comment.
+  { label: 'Customization', to: '/customization', icon: SlidersHorizontal, permission: PERMISSIONS.CUSTOM_FIELDS_MANAGE },
   { label: 'Audit Logs', to: '/audit-logs', icon: ShieldCheck, permission: PERMISSIONS.AUDIT_LOGS_VIEW },
   { label: 'Settings', to: '/settings', icon: Settings },
 ];

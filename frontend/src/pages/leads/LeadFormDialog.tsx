@@ -13,6 +13,7 @@ import { WebsiteField } from '@/components/shared/WebsiteField';
 import { CompanyDetailsFields } from '@/components/shared/CompanyDetailsFields';
 import { MeetingScheduleFields } from '@/components/shared/MeetingScheduleFields';
 import { SdrAndReceivedDateFields } from '@/components/shared/SdrAndReceivedDateFields';
+import { CustomFieldsSection } from '@/components/shared/CustomFieldsSection';
 import { useCreateLead } from '@/api/leads';
 import { useCampaigns } from '@/api/campaigns';
 import { apiErrorMessage } from '@/lib/api';
@@ -44,6 +45,10 @@ const schema = z
     sdrId: z.string().nullable().optional(),
     createdBySdrId: z.string().nullable().optional(),
     leadReceivedDate: z.string().min(1, 'Lead Received Date is required'),
+    // Phase 4: admin-defined extra fields (see components/shared/CustomFieldsSection.tsx). Kept
+    // as an untyped record here — the actual per-key validation happens server-side against this
+    // org's field definitions, which a static Zod schema has no way to know about.
+    customFields: z.record(z.unknown()).optional(),
   })
   .merge(companyDetailsSchema)
   .merge(meetingScheduleSchema)
@@ -103,6 +108,7 @@ export function LeadFormDialog({ open, onOpenChange }: { open: boolean; onOpenCh
         meetingScheduledTime: values.meetingScheduledTime || undefined,
         meetingTimeZone: values.meetingTimeZone || undefined,
         status: 'NEW',
+        customFields: values.customFields,
       });
       toast.success(`Lead ${lead.displayId} created`);
       reset();
@@ -239,6 +245,12 @@ export function LeadFormDialog({ open, onOpenChange }: { open: boolean; onOpenCh
             <Label>Email Response</Label>
             <Textarea rows={3} {...register('emailResponse')} placeholder="Context on how this lead came in…" />
           </div>
+
+          <Controller
+            control={control}
+            name="customFields"
+            render={({ field }) => <CustomFieldsSection value={field.value} onChange={field.onChange} />}
+          />
 
           <DialogFooter className="sm:col-span-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>

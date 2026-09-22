@@ -22,6 +22,7 @@ import { db, pool } from '@/config/db';
 import { organizations, roles, permissions, users, companies, contacts, campaigns, leads, meetings, activities } from '@/db/schema';
 import { ALL_PERMISSIONS, PERMISSION_DESCRIPTIONS } from '@/utils/permissions';
 import { seedDefaultRolesForOrganization } from '@/utils/defaultRoles';
+import { seedDefaultPipelineStagesForOrganization } from '@/utils/defaultPipelineStages';
 import { env } from '@/config/env';
 import { logger } from '@/config/logger';
 import { parseFlexibleDate, splitName, classifyOutcome } from '@/utils/spreadsheetImport';
@@ -280,6 +281,9 @@ async function seedLeadsFromSpreadsheet(organizationId: string, adminId: string,
 async function main() {
   const organization = await ensureDefaultOrganization();
   await seedRolesAndPermissions(organization.id);
+  // Phase 4: same idempotent per-org seeding pattern as roles above — gives this organization its
+  // own 13 pipeline-stage rows (see utils/defaultPipelineStages.ts).
+  await seedDefaultPipelineStagesForOrganization(organization.id);
 
   const admin = await ensureUser({
     email: env.SEED_ADMIN_EMAIL,
