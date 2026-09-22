@@ -8,6 +8,7 @@ export const PERMISSIONS = {
   CUSTOM_FIELDS_MANAGE: 'custom_fields:manage',
   PIPELINE_STAGES_MANAGE: 'pipeline_stages:manage',
   CUSTOM_OBJECTS_MANAGE: 'custom_objects:manage',
+  SAVED_VIEWS_MANAGE_SHARED: 'saved_views:manage_shared',
 
   LEADS_CREATE: 'leads:create',
   LEADS_VIEW: 'leads:view',

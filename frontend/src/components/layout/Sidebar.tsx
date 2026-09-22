@@ -1,14 +1,15 @@
-import { Fragment } from 'react';
+import { Fragment, useMemo } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Target, Building2, Users, Megaphone, Activity, CalendarClock, ListChecks,
   FileText, BarChart3, UserCog, ShieldCheck, KeyRound, Settings, ChevronLeft, ChevronRight,
-  SlidersHorizontal,
+  SlidersHorizontal, Box,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useUIStore } from '@/store/uiStore';
 import { cn } from '@/lib/utils';
 import { PERMISSIONS } from '@/lib/permissions';
+import { useCustomObjectDefinitions } from '@/api/customObjects';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface NavItem {
@@ -69,7 +70,31 @@ export function Sidebar() {
   const { sidebarCollapsed, toggleSidebar } = useUIStore();
   const { pathname } = useLocation();
 
-  const visibleItems = NAV_ITEMS.filter((item) => {
+  // Phase 7 ("custom views/nav"): one nav item per organization's custom object definition
+  // (Phase 5), gated on the exact same CUSTOM_OBJECTS_MANAGE permission every custom-objects
+  // route already requires (see customObjects.routes.ts) — so this can never show, or link to, a
+  // page the caller couldn't already reach by other means. `enabled` keeps the request from ever
+  // firing for a caller who lacks it, rather than firing and getting a 403.
+  const canManageCustomObjects = hasPermission(PERMISSIONS.CUSTOM_OBJECTS_MANAGE);
+  const { data: customObjectDefinitions } = useCustomObjectDefinitions({ enabled: canManageCustomObjects });
+
+  // Spliced in right after "Customization" in the underlying (unfiltered) NAV_ITEMS array, then
+  // run through the exact same permission filter below — so ordering stays deterministic
+  // regardless of which other items a given caller's role does or doesn't see.
+  const items = useMemo(() => {
+    if (!customObjectDefinitions?.length) return NAV_ITEMS;
+    const dynamicItems: NavItem[] = customObjectDefinitions.map((def) => ({
+      label: def.pluralLabel,
+      to: `/objects/${def.id}`,
+      icon: Box,
+      permission: PERMISSIONS.CUSTOM_OBJECTS_MANAGE,
+    }));
+    const customizationIdx = NAV_ITEMS.findIndex((item) => item.to === '/customization');
+    const insertAt = customizationIdx === -1 ? NAV_ITEMS.length : customizationIdx + 1;
+    return [...NAV_ITEMS.slice(0, insertAt), ...dynamicItems, ...NAV_ITEMS.slice(insertAt)];
+  }, [customObjectDefinitions]);
+
+  const visibleItems = items.filter((item) => {
     if (item.roles && !hasRole(...item.roles)) return false;
     if (item.permission && !hasPermission(item.permission)) return false;
     return true;

@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { DataTable, DataTableColumn } from '@/components/shared/DataTable';
 import { Pagination } from '@/components/shared/Pagination';
+import { SavedViewsMenu } from '@/components/shared/SavedViewsMenu';
 import { LeadStatusBadge, PriorityBadge } from '@/components/shared/StatusBadge';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -75,6 +76,25 @@ export default function LeadsListPage() {
     setParams(next);
   }
 
+  // Phase 7 ("custom views/nav"): a saved view IS this page's own query-string state, minus
+  // `page` — reapplying a saved view always starts back at page 1, same as changing any other
+  // filter does via updateParam above.
+  const currentFiltersForSavedView = useMemo(() => {
+    const bag: Record<string, string> = {};
+    for (const [key, value] of params.entries()) {
+      if (key === 'page') continue;
+      bag[key] = value;
+    }
+    return bag;
+  }, [params]);
+
+  function applySavedView(filters: Record<string, string>) {
+    const next = new URLSearchParams(filters);
+    next.set('page', '1');
+    setParams(next);
+    setSearch(filters.search ?? '');
+  }
+
   const columns: DataTableColumn<Lead>[] = [
     { key: 'displayId', header: 'Lead ID', cell: (l) => <span className="font-mono text-xs font-medium">{l.displayId}</span> },
     {
@@ -135,6 +155,8 @@ export default function LeadsListPage() {
       />
 
       <div className="flex flex-wrap items-center gap-2">
+        <SavedViewsMenu currentFilters={currentFiltersForSavedView} onApply={applySavedView} />
+
         <form
           className="relative w-full max-w-xs"
           onSubmit={(e) => {

@@ -27,7 +27,13 @@ export interface CustomObjectRecord {
   updatedAt: string;
 }
 
-export function useCustomObjectDefinitions() {
+// Phase 7 ("custom views/nav"): Sidebar.tsx calls this with `enabled: hasPermission(CUSTOM_OBJECTS_MANAGE)`
+// to build one nav item per definition — the same permission every custom-objects route already
+// requires (see customObjects.routes.ts), so this never fires (and never 403s) for a caller who
+// couldn't reach the list anyway. Every other existing caller (CustomizationPage.tsx) already
+// only renders once past its own permission gate, so the default of always-enabled is unchanged
+// for them.
+export function useCustomObjectDefinitions(options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ['customObjectDefinitions'],
     queryFn: async () => {
@@ -35,6 +41,7 @@ export function useCustomObjectDefinitions() {
       return res.data.data;
     },
     staleTime: 60_000,
+    enabled: options.enabled ?? true,
   });
 }
 

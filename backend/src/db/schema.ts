@@ -382,6 +382,55 @@ export const customObjectRecords = pgTable(
   ]
 );
 
+// ----------------------------------------------------------------------------
+// Customization engine, part 3 (Phase 7) — saved views + custom object nav
+// ----------------------------------------------------------------------------
+// Section K's Phase 7 is "custom views/nav." The "nav" half needed no new table at all: every
+// custom-objects route (Phase 5) is already gated behind a single CUSTOM_OBJECTS_MANAGE
+// permission with no separate "view" tier (see customObjects.routes.ts's own comment), so the
+// sidebar simply grows one nav item per organization's custom object definitions, gated on that
+// same permission — see Sidebar.tsx. The "views" half is this table: a saved filter/sort preset
+// for a list page, deliberately scoped to `entityType = 'LEAD'` only for now (the only list page
+// with a rich multi-filter UI worth saving) — the same LEAD-only-first, generalize-later precedent
+// `customFieldDefinitions` set in Phase 4 before Phase 5 needed it for custom objects.
+export const savedViews = pgTable(
+  'saved_views',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
+    // 'LEAD' today; kept as a plain string (not an enum) for the same reason
+    // `customFieldDefinitions.entityType` is — so a future entity (or a custom object) can adopt
+    // saved views without a schema change.
+    entityType: varchar('entity_type', { length: 50 }).notNull().default('LEAD'),
+    name: varchar('name', { length: 150 }).notNull(),
+    // Personal (default): visible only to its creator. Shared: visible to the whole
+    // organization — creating or editing one requires SAVED_VIEWS_MANAGE_SHARED, not just
+    // ownership, so a team's shared views stay collectively maintained (see
+    // savedViews.service.ts). No onDelete override on createdById, mirroring
+    // customObjectRecords.createdById above — this app deactivates users rather than hard-deleting
+    // them, so a dangling reference here would indicate a data-integrity bug worth surfacing, not
+    // a case to silently null out.
+    isShared: boolean('is_shared').notNull().default(false),
+    createdById: uuid('created_by_id').references(() => users.id),
+    // The list page's own query-string params (search/status/source/priority/assignedToId/
+    // sdrId/createdBySdrId/industry/country/sortBy/sortDir for LEAD today) as a plain JSON object
+    // — applied by simply re-seeding the URLSearchParams the list page already drives its query
+    // off of (see LeadsListPage.tsx), so this stores exactly the shape it will be replayed into.
+    filters: jsonb('filters').notNull().default(sql`'{}'::jsonb`),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('saved_views_org_entity_idx').on(t.organizationId, t.entityType),
+    // Scoped to (org, entityType, creator, name) — prevents one user from saving two views of
+    // the same name, personal or shared. Deliberately does NOT also prevent two different users
+    // from independently naming their own shared views identically; that's a minor cosmetic
+    // collision, not a data-integrity one, and resolving it would need a separate "shared views
+    // have no single owner" model this phase doesn't need.
+    uniqueIndex('saved_views_org_entity_creator_name_unique').on(t.organizationId, t.entityType, t.createdById, t.name),
+  ]
+);
+
 export const leads = pgTable(
   'leads',
   {
@@ -642,6 +691,7 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
   pipelineStages: many(pipelineStages),
   customObjectDefinitions: many(customObjectDefinitions),
   customObjectRecords: many(customObjectRecords),
+  savedViews: many(savedViews),
 }));
 
 export const customFieldDefinitionsRelations = relations(customFieldDefinitions, ({ one }) => ({
@@ -661,6 +711,11 @@ export const customObjectRecordsRelations = relations(customObjectRecords, ({ on
   organization: one(organizations, { fields: [customObjectRecords.organizationId], references: [organizations.id] }),
   objectDefinition: one(customObjectDefinitions, { fields: [customObjectRecords.objectDefinitionId], references: [customObjectDefinitions.id] }),
   createdBy: one(users, { fields: [customObjectRecords.createdById], references: [users.id] }),
+}));
+
+export const savedViewsRelations = relations(savedViews, ({ one }) => ({
+  organization: one(organizations, { fields: [savedViews.organizationId], references: [organizations.id] }),
+  createdBy: one(users, { fields: [savedViews.createdById], references: [users.id] }),
 }));
 
 export const rolesRelations = relations(roles, ({ one, many }) => ({

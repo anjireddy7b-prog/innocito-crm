@@ -29,6 +29,12 @@ export const PERMISSIONS = {
   // by default, same precedent as CUSTOM_FIELDS_MANAGE/PIPELINE_STAGES_MANAGE — not extended to
   // any other default role this phase.
   CUSTOM_OBJECTS_MANAGE: 'custom_objects:manage',
+  // Phase 7: create, edit, or delete a saved view that's marked shared (visible to the whole
+  // organization, not just its creator) — see db/schema.ts's savedViews table comment. Anyone
+  // holding the relevant "view" permission for a saved view's entityType (LEADS_VIEW today) can
+  // always create/edit/delete their OWN personal (non-shared) views without this; this is only
+  // for the org-wide ones, same "management" tier as REPORTS_EXPORT/AUDIT_LOGS_VIEW below.
+  SAVED_VIEWS_MANAGE_SHARED: 'saved_views:manage_shared',
 
   LEADS_CREATE: 'leads:create',
   LEADS_VIEW: 'leads:view',
@@ -106,6 +112,7 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     PERMISSIONS.REPORTS_VIEW,
     PERMISSIONS.REPORTS_EXPORT,
     PERMISSIONS.AUDIT_LOGS_VIEW,
+    PERMISSIONS.SAVED_VIEWS_MANAGE_SHARED,
   ],
 };
 
@@ -126,6 +133,7 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionKey, string> = {
   [PERMISSIONS.CUSTOM_FIELDS_MANAGE]: 'Create, rename, and delete custom fields on leads',
   [PERMISSIONS.PIPELINE_STAGES_MANAGE]: 'Rename, reorder, and edit pipeline stage flags',
   [PERMISSIONS.CUSTOM_OBJECTS_MANAGE]: 'Create, edit, and delete custom object types and their records',
+  [PERMISSIONS.SAVED_VIEWS_MANAGE_SHARED]: 'Create, edit, and delete shared (organization-wide) saved views',
   [PERMISSIONS.LEADS_CREATE]: 'Create new leads',
   [PERMISSIONS.LEADS_VIEW]: 'View leads',
   [PERMISSIONS.LEADS_EDIT_OWN]: 'Edit leads you are assigned to / own / created',
