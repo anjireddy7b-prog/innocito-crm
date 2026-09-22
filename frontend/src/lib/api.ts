@@ -53,6 +53,27 @@ api.interceptors.response.use(
       const newToken = await refreshPromise;
       if (newToken) {
         useAuthStore.setState((s) => ({ accessToken: newToken, status: 'authenticated', user: s.user }));
+
+        // The access token rotates every ~15 minutes for as long as a tab stays open, but until
+        // now this only swapped the token — the cached `user.permissions`/`role` stayed exactly
+        // as they were at the tab's last full page load. A permission granted server-side (e.g.
+        // an admin's default-role grants being backfilled, or a role edited in Settings) would
+        // then never reach an already-open tab's nav/route guards, no matter how long it waited;
+        // only a hard reload or logout/login re-ran useAuthBootstrap's own /auth/me fetch. Re-
+        // fetching /auth/me here — which always re-queries the DB for the caller's current
+        // permissions (see auth.service.ts's getCurrentUser/loadUserWithPermissions) — closes
+        // that gap so a silent token refresh now keeps the whole cached user current, not just
+        // the token. Plain `axios`, not the wrapped `api` instance, so this can't recurse back
+        // into this same interceptor; failure here is non-fatal and simply keeps the old cached
+        // user rather than failing the original request.
+        try {
+          const meRes = await axios.get('/api/auth/me', { headers: { Authorization: `Bearer ${newToken}` } });
+          const freshUser = meRes.data?.data;
+          if (freshUser) useAuthStore.setState({ user: freshUser });
+        } catch {
+          // Non-fatal — see comment above.
+        }
+
         original.headers = original.headers ?? {};
         original.headers.Authorization = `Bearer ${newToken}`;
         return api(original);
