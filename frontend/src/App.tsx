@@ -20,6 +20,8 @@ const CasesListPage = lazy(() => import('@/pages/cases/CasesListPage'));
 const CaseDetailPage = lazy(() => import('@/pages/cases/CaseDetailPage'));
 const KnowledgeBaseListPage = lazy(() => import('@/pages/knowledgeBase/KnowledgeBaseListPage'));
 const KnowledgeArticleDetailPage = lazy(() => import('@/pages/knowledgeBase/KnowledgeArticleDetailPage'));
+const SequencesListPage = lazy(() => import('@/pages/sequences/SequencesListPage'));
+const SequenceDetailPage = lazy(() => import('@/pages/sequences/SequenceDetailPage'));
 const CampaignsListPage = lazy(() => import('@/pages/campaigns/CampaignsListPage'));
 const CampaignDetailPage = lazy(() => import('@/pages/campaigns/CampaignDetailPage'));
 const MeetingsPage = lazy(() => import('@/pages/MeetingsPage'));
@@ -78,6 +80,26 @@ export default function App() {
 
           <Route path="/knowledge-base" element={<KnowledgeBaseListPage />} />
           <Route path="/knowledge-base/:id" element={<KnowledgeArticleDetailPage />} />
+
+          <Route
+            path="/sequences"
+            element={
+              // Phase 9 ("advanced CRM" slice) — sequences, Stage 2. Gated at the route level
+              // (unlike /cases and /knowledge-base) since SEQUENCES_MANAGE covers the whole
+              // module including viewing — see that permission's own comment in lib/permissions.ts.
+              <RequirePermission permission={PERMISSIONS.SEQUENCES_MANAGE}>
+                <SequencesListPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/sequences/:id"
+            element={
+              <RequirePermission permission={PERMISSIONS.SEQUENCES_MANAGE}>
+                <SequenceDetailPage />
+              </RequirePermission>
+            }
+          />
 
           <Route path="/campaigns" element={<CampaignsListPage />} />
           <Route path="/campaigns/:id" element={<CampaignDetailPage />} />

@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Target, Building2, Users, Megaphone, Activity, CalendarClock, ListChecks,
   FileText, BarChart3, UserCog, ShieldCheck, KeyRound, Settings, ChevronLeft, ChevronRight,
-  SlidersHorizontal, Box, GitMerge, LifeBuoy, BookOpen,
+  SlidersHorizontal, Box, GitMerge, LifeBuoy, BookOpen, Send,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useUIStore } from '@/store/uiStore';
@@ -41,6 +41,10 @@ const NAV_ITEMS: NavItem[] = [
   // articles needs no permission; only creating/editing/deleting one (and seeing drafts at all)
   // requires KNOWLEDGE_BASE_MANAGE — see that permission's own comment in lib/permissions.ts.
   { label: 'Knowledge Base', to: '/knowledge-base', icon: BookOpen },
+  // Phase 9 ("advanced CRM" slice) — sequences, Stage 2. Unlike Cases/Knowledge Base above, this
+  // item IS gated — SEQUENCES_MANAGE covers the whole module including viewing, so a caller
+  // without it couldn't do anything on this page anyway (see that permission's own comment).
+  { label: 'Sequences', to: '/sequences', icon: Send, permission: PERMISSIONS.SEQUENCES_MANAGE },
   { label: 'Documents', to: '/documents', icon: FileText },
   { label: 'Activity Feed', to: '/activities', icon: Activity },
   { label: 'Reports', to: '/reports', icon: BarChart3, permission: PERMISSIONS.REPORTS_VIEW },

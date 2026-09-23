@@ -51,6 +51,13 @@ export const PERMISSIONS = {
   // ones (a PUBLISHED article needs no permission to view — see this permission's usage in
   // knowledgeBase.service.ts). Same single-permission-per-module shape as CASES_MANAGE above.
   KNOWLEDGE_BASE_MANAGE: 'knowledge_base:manage',
+  // Phase 9 ("advanced CRM" slice), Stage 2: author/edit/archive sequences and their steps, AND
+  // enroll/pause/resume/exit a lead's enrollment. One permission for the whole module, same shape
+  // as CASES_MANAGE/KNOWLEDGE_BASE_MANAGE — unlike those two, though, there's no separate "any
+  // authenticated member can view" tier: a sequence's step copy is outreach content authored for
+  // enrolling leads, not organization-wide reference material, so viewing sits behind the same
+  // permission as managing (see sequences.routes.ts).
+  SEQUENCES_MANAGE: 'sequences:manage',
 
   LEADS_CREATE: 'leads:create',
   LEADS_VIEW: 'leads:view',
@@ -100,6 +107,9 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     PERMISSIONS.REPORTS_VIEW,
     PERMISSIONS.CASES_MANAGE,
     PERMISSIONS.KNOWLEDGE_BASE_MANAGE,
+    // Phase 9, Stage 2: INSIDE_SALES runs first-touch outreach cadences — the primary audience
+    // for sequences.
+    PERMISSIONS.SEQUENCES_MANAGE,
   ],
   SALES: [
     PERMISSIONS.LEADS_VIEW,
@@ -112,6 +122,8 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     PERMISSIONS.REPORTS_VIEW,
     PERMISSIONS.CASES_MANAGE,
     PERMISSIONS.KNOWLEDGE_BASE_MANAGE,
+    // Phase 9, Stage 2: SALES also runs follow-up cadences on leads already in their pipeline.
+    PERMISSIONS.SEQUENCES_MANAGE,
   ],
   DELIVERY: [
     PERMISSIONS.LEADS_VIEW,
@@ -164,6 +176,7 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionKey, string> = {
   [PERMISSIONS.VALIDATION_RULES_MANAGE]: 'Create, edit, and delete validation rules on leads',
   [PERMISSIONS.CASES_MANAGE]: 'Create, edit, and delete cases and case comments; change case status, priority, and assignment',
   [PERMISSIONS.KNOWLEDGE_BASE_MANAGE]: 'Create, edit, and delete knowledge base articles; view and publish drafts',
+  [PERMISSIONS.SEQUENCES_MANAGE]: 'Create, edit, and archive email sequences; enroll, pause, resume, and exit leads from a sequence',
   [PERMISSIONS.LEADS_CREATE]: 'Create new leads',
   [PERMISSIONS.LEADS_VIEW]: 'View leads',
   [PERMISSIONS.LEADS_EDIT_OWN]: 'Edit leads you are assigned to / own / created',

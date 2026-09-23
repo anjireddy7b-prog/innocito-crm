@@ -1,7 +1,7 @@
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { humanizeEnum } from '@/lib/utils';
-import type { LeadStatus, LeadPriority, TaskStatus, MeetingStatus, CaseStatus, CasePriority, ArticleStatus } from '@/types';
+import type { LeadStatus, LeadPriority, TaskStatus, MeetingStatus, CaseStatus, CasePriority, ArticleStatus, SequenceStatus, SequenceEnrollmentStatus } from '@/types';
 
 const LEAD_STATUS_STYLES: Record<LeadStatus, string> = {
   NEW: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
@@ -92,4 +92,28 @@ const ARTICLE_STATUS_STYLES: Record<ArticleStatus, string> = {
 
 export function ArticleStatusBadge({ status, className }: { status: ArticleStatus; className?: string }) {
   return <Badge className={cn('border-transparent font-medium', ARTICLE_STATUS_STYLES[status], className)}>{humanizeEnum(status)}</Badge>;
+}
+
+// Phase 9 ("advanced CRM" slice) — sequences, Stage 2.
+const SEQUENCE_STATUS_STYLES: Record<SequenceStatus, string> = {
+  DRAFT: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+  ACTIVE: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+  ARCHIVED: 'bg-neutral-200 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400',
+};
+
+export function SequenceStatusBadge({ status, className }: { status: SequenceStatus; className?: string }) {
+  return <Badge className={cn('border-transparent font-medium', SEQUENCE_STATUS_STYLES[status], className)}>{humanizeEnum(status)}</Badge>;
+}
+
+const SEQUENCE_ENROLLMENT_STATUS_STYLES: Record<SequenceEnrollmentStatus, string> = {
+  ACTIVE: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+  PAUSED: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+  COMPLETED: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+  EXITED: 'bg-neutral-200 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400',
+};
+
+export function SequenceEnrollmentStatusBadge({ status, className }: { status: SequenceEnrollmentStatus; className?: string }) {
+  return (
+    <Badge className={cn('border-transparent font-medium', SEQUENCE_ENROLLMENT_STATUS_STYLES[status], className)}>{humanizeEnum(status)}</Badge>
+  );
 }

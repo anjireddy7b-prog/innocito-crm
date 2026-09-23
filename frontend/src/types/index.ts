@@ -272,6 +272,66 @@ export interface KnowledgeArticle {
   createdBy?: UserSummary | null;
 }
 
+// Phase 9 ("advanced CRM" slice) — sequences, Stage 2 (built on Stage 1's OAuth connection
+// infrastructure — see api/integrations.ts). SEQUENCES_MANAGE gates the whole module including
+// viewing (no "anyone can view" carve-out like Cases/Knowledge Base) — see that permission's own
+// comment in lib/permissions.ts.
+export type SequenceStatus = 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
+export type SequenceEnrollmentStatus = 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'EXITED';
+
+export interface SequenceStep {
+  id: string;
+  sequenceId: string;
+  stepOrder: number;
+  // Business days after the previous step was sent (or after enrollment, for the first step). 0
+  // is valid — see backend/src/utils/sequenceScheduling.ts.
+  delayDays: number;
+  subject: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Sequence {
+  id: string;
+  organizationId: string;
+  name: string;
+  description: string | null;
+  status: SequenceStatus;
+  createdById: string | null;
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: { id: string; firstName: string; lastName: string } | null;
+  // Present only on the list endpoint (GET /sequences) — see sequences.service.ts's listSequences.
+  stepCount?: number;
+  // Present on both the list endpoint and a single sequence's detail.
+  activeEnrollmentCount?: number;
+  // Present only on a single sequence's detail — GET/POST/PATCH /sequences/:id and every steps
+  // mutation all return the full sequence via getSequenceById.
+  steps?: SequenceStep[];
+}
+
+export interface SequenceEnrollment {
+  id: string;
+  organizationId: string;
+  sequenceId: string;
+  leadId: string;
+  enrolledById: string | null;
+  status: SequenceEnrollmentStatus;
+  currentStepId: string | null;
+  nextSendAt: string | null;
+  pausedAt: string | null;
+  completedAt: string | null;
+  exitedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  // Present only on the list endpoint (GET /sequences/:id/enrollments) — see
+  // sequences.service.ts's listEnrollments/serializeEnrollment.
+  lead?: { id: string; leadNumber: number; displayId: string; contact: ContactSummary | null } | null;
+  enrolledBy?: UserSummary | null;
+  currentStep?: { id: string; stepOrder: number; subject: string } | null;
+}
+
 export interface Campaign {
   id: string;
   name: string;

@@ -28,6 +28,7 @@ import { dashboardRouter } from './dashboard/dashboard.routes';
 import { searchRouter } from './search/search.routes';
 import { reportsRouter } from './reports/reports.routes';
 import { integrationsRouter } from './integrations/integrations.routes';
+import { sequencesRouter } from './sequences/sequences.routes';
 
 export const apiRouter = Router();
 
@@ -60,3 +61,4 @@ apiRouter.use('/dashboard', dashboardRouter);
 apiRouter.use('/search', searchRouter);
 apiRouter.use('/reports', reportsRouter);
 apiRouter.use('/integrations', integrationsRouter);
+apiRouter.use('/sequences', sequencesRouter);

@@ -12,6 +12,11 @@ export const PERMISSIONS = {
   VALIDATION_RULES_MANAGE: 'validation_rules:manage',
   CASES_MANAGE: 'cases:manage',
   KNOWLEDGE_BASE_MANAGE: 'knowledge_base:manage',
+  // Phase 9 ("advanced CRM" slice) — sequences, Stage 2. Unlike CASES_MANAGE/KNOWLEDGE_BASE_MANAGE
+  // above, this gates the ENTIRE module including viewing — sequence step content is outreach
+  // copy authored for enrolling leads, not org-wide reference material. Granted by default only
+  // to INSIDE_SALES and SALES (see backend/src/utils/permissions.ts).
+  SEQUENCES_MANAGE: 'sequences:manage',
 
   LEADS_CREATE: 'leads:create',
   LEADS_VIEW: 'leads:view',

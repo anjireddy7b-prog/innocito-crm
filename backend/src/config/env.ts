@@ -42,6 +42,18 @@ const envSchema = z.object({
   MICROSOFT_CLIENT_ID: z.string().optional(),
   MICROSOFT_CLIENT_SECRET: z.string().optional(),
   MICROSOFT_REDIRECT_URI: z.string().optional(),
+
+  // Phase 9 ("advanced CRM" slice) — sequences, Stage 2 (the engine, on top of Stage 1's
+  // connections above). All optional with working defaults — unlike Stage 1, the sequences
+  // engine needs no external credentials to run; it only ever sends through utils/emailSender.ts,
+  // which already knows how to fall back to SMTP. The send window is a single global window in
+  // UTC, not a per-organization timezone — the `organizations` table has no timezone column yet
+  // (see its own "intentionally minimal" module comment), so this is a deliberate v1
+  // simplification, not an oversight: every org's sequence sends currently respect the same
+  // UTC hours, however that maps to any given rep's actual working hours.
+  SEQUENCE_SEND_WINDOW_START_HOUR: z.coerce.number().min(0).max(23).default(9),
+  SEQUENCE_SEND_WINDOW_END_HOUR: z.coerce.number().min(1).max(24).default(18),
+  SEQUENCE_SCHEDULER_INTERVAL_MINUTES: z.coerce.number().min(1).default(5),
 });
 
 const parsed = envSchema.safeParse(process.env);

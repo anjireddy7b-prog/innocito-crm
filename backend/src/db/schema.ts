@@ -76,6 +76,18 @@ export const knowledgeArticleStatusEnum = pgEnum('knowledge_article_status', ['D
 // provider isn't server-configured. See utils/tokenCrypto.ts, utils/emailSender.ts, and
 // modules/integrations/*.
 export const oauthProviderEnum = pgEnum('oauth_provider', ['GOOGLE', 'MICROSOFT']);
+// Phase 9 ("advanced CRM" slice) — sequences/email-calendar integration, Stage 2 (the engine
+// itself, built on top of Stage 1's OAuth infra above). A sequence is DRAFT while its steps are
+// still being authored, ACTIVE once leads can be enrolled into it, and ARCHIVED to retire it
+// (archiving also exits every non-terminal enrollment — see sequences.service.ts's archiveSequence
+// — rather than leaving them silently stuck with a sequence that will never advance them again).
+export const sequenceStatusEnum = pgEnum('sequence_status', ['DRAFT', 'ACTIVE', 'ARCHIVED']);
+// ACTIVE = still receiving steps on schedule; PAUSED = manually held (resumable); COMPLETED = ran
+// every step; EXITED = manually removed, or auto-removed by archiving its sequence. Deliberately no
+// auto-pause-on-reply-detection state in v1 (per the user's own confirmed scope) — pause/exit are
+// always an explicit action, never inferred from inbound mail.
+export const sequenceEnrollmentStatusEnum = pgEnum('sequence_enrollment_status', ['ACTIVE', 'PAUSED', 'COMPLETED', 'EXITED']);
+export const sequenceSendStatusEnum = pgEnum('sequence_send_status', ['SENT', 'FAILED']);
 
 // ----------------------------------------------------------------------------
 // Multi-tenancy
@@ -709,6 +721,109 @@ export const emailConnections = pgTable(
 );
 
 // ----------------------------------------------------------------------------
+// Phase 9 ("advanced CRM" slice) — sequences (Stage 2: the engine, on top of Stage 1's connections)
+// ----------------------------------------------------------------------------
+// A sequence is an org-wide, reusable template (author it once, enroll many leads) — its own
+// `sequenceSteps` rows, not a snapshot copied per enrollment, which is a deliberate v1
+// simplification: editing an ACTIVE sequence's steps affects every enrollment still in flight,
+// since the engine reads live step rows at send time rather than a frozen copy (see
+// sequences.service.ts's module comment for the full reasoning).
+export const sequences = pgTable(
+  'sequences',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
+    name: varchar('name', { length: 255 }).notNull(),
+    description: text('description'),
+    status: sequenceStatusEnum('status').notNull().default('DRAFT'),
+    createdById: uuid('created_by_id').references(() => users.id),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [index('sequences_org_idx').on(t.organizationId), index('sequences_org_status_idx').on(t.organizationId, t.status)]
+);
+
+// `stepOrder` is a plain integer, deliberately not kept contiguous (1,2,3…) after a delete — every
+// lookup is relative ("the step after this stepOrder", "the minimum stepOrder in this sequence"),
+// so gaps left by a delete never matter and no renumbering pass is needed. `delayDays` is business
+// days after the PREVIOUS step was actually sent (or after enrollment, for the first step) — see
+// utils/sequenceScheduling.ts.
+export const sequenceSteps = pgTable(
+  'sequence_steps',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sequenceId: uuid('sequence_id').notNull().references(() => sequences.id, { onDelete: 'cascade' }),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
+    stepOrder: integer('step_order').notNull(),
+    delayDays: integer('delay_days').notNull().default(0),
+    subject: varchar('subject', { length: 255 }).notNull(),
+    body: text('body').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('sequence_steps_sequence_order_idx').on(t.sequenceId, t.stepOrder),
+    index('sequence_steps_org_idx').on(t.organizationId),
+  ]
+);
+
+// One row per (sequence, lead) that is CURRENTLY enrolled or has a history worth keeping —
+// deliberately NOT a hard-unique (sequenceId, leadId) constraint, so a lead that COMPLETED or
+// EXITED a sequence can be re-enrolled into it later (a very plausible real use: re-running a
+// cadence on a lead that went cold). Only one ACTIVE/PAUSED row per (sequenceId, leadId) is
+// allowed, enforced in sequences.service.ts's enrollLead — an application-level check, not a DB
+// constraint, since the DB has no easy way to express "unique among a subset of rows".
+// `currentStepId` (not a stepOrder integer) is the step still pending for this enrollment —
+// pointing at the actual row survives a later step reorder; `onDelete: 'set null'` on its FK is a
+// safety net, but sequences.service.ts's deleteStep refuses to delete a step any ACTIVE/PAUSED
+// enrollment currently points at, so in practice this should never fire.
+export const sequenceEnrollments = pgTable(
+  'sequence_enrollments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
+    sequenceId: uuid('sequence_id').notNull().references(() => sequences.id, { onDelete: 'cascade' }),
+    leadId: uuid('lead_id').notNull().references(() => leads.id, { onDelete: 'cascade' }),
+    enrolledById: uuid('enrolled_by_id').notNull().references(() => users.id),
+    status: sequenceEnrollmentStatusEnum('status').notNull().default('ACTIVE'),
+    currentStepId: uuid('current_step_id').references(() => sequenceSteps.id, { onDelete: 'set null' }),
+    // Null once PAUSED/COMPLETED/EXITED — the scheduler's due-work query is `status = 'ACTIVE' AND
+    // nextSendAt <= now()`, so a null here (regardless of status) is simply never picked up.
+    nextSendAt: timestamp('next_send_at'),
+    pausedAt: timestamp('paused_at'),
+    completedAt: timestamp('completed_at'),
+    exitedAt: timestamp('exited_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('sequence_enrollments_org_idx').on(t.organizationId),
+    index('sequence_enrollments_sequence_idx').on(t.sequenceId),
+    index('sequence_enrollments_lead_idx').on(t.leadId),
+    // The scheduler's own due-work query shape — see utils/sequenceScheduling.ts's caller in
+    // sequences.service.ts's runDueSequenceSteps.
+    index('sequence_enrollments_status_next_send_idx').on(t.status, t.nextSendAt),
+  ]
+);
+
+// An append-only log of every send attempt (one row per attempt, not per success) — this is what
+// a Sequence's detail page reads to show "last sent" history, and what lets a human debug why an
+// enrollment stalled (see the FAILED rows' errorMessage) without needing server log access.
+export const sequenceSends = pgTable(
+  'sequence_sends',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
+    enrollmentId: uuid('enrollment_id').notNull().references(() => sequenceEnrollments.id, { onDelete: 'cascade' }),
+    stepId: uuid('step_id').references(() => sequenceSteps.id, { onDelete: 'set null' }),
+    status: sequenceSendStatusEnum('status').notNull(),
+    errorMessage: text('error_message'),
+    sentAt: timestamp('sent_at').notNull().defaultNow(),
+  },
+  (t) => [index('sequence_sends_enrollment_idx').on(t.enrollmentId)]
+);
+
+// ----------------------------------------------------------------------------
 // Engagement entities
 // ----------------------------------------------------------------------------
 export const meetings = pgTable(
@@ -943,6 +1058,31 @@ export const emailConnectionsRelations = relations(emailConnections, ({ one }) =
   user: one(users, { fields: [emailConnections.userId], references: [users.id] }),
 }));
 
+export const sequencesRelations = relations(sequences, ({ one, many }) => ({
+  organization: one(organizations, { fields: [sequences.organizationId], references: [organizations.id] }),
+  createdBy: one(users, { fields: [sequences.createdById], references: [users.id] }),
+  steps: many(sequenceSteps),
+  enrollments: many(sequenceEnrollments),
+}));
+
+export const sequenceStepsRelations = relations(sequenceSteps, ({ one }) => ({
+  sequence: one(sequences, { fields: [sequenceSteps.sequenceId], references: [sequences.id] }),
+}));
+
+export const sequenceEnrollmentsRelations = relations(sequenceEnrollments, ({ one, many }) => ({
+  organization: one(organizations, { fields: [sequenceEnrollments.organizationId], references: [organizations.id] }),
+  sequence: one(sequences, { fields: [sequenceEnrollments.sequenceId], references: [sequences.id] }),
+  lead: one(leads, { fields: [sequenceEnrollments.leadId], references: [leads.id] }),
+  enrolledBy: one(users, { fields: [sequenceEnrollments.enrolledById], references: [users.id] }),
+  currentStep: one(sequenceSteps, { fields: [sequenceEnrollments.currentStepId], references: [sequenceSteps.id] }),
+  sends: many(sequenceSends),
+}));
+
+export const sequenceSendsRelations = relations(sequenceSends, ({ one }) => ({
+  enrollment: one(sequenceEnrollments, { fields: [sequenceSends.enrollmentId], references: [sequenceEnrollments.id] }),
+  step: one(sequenceSteps, { fields: [sequenceSends.stepId], references: [sequenceSteps.id] }),
+}));
+
 export const rolesRelations = relations(roles, ({ one, many }) => ({
   organization: one(organizations, { fields: [roles.organizationId], references: [organizations.id] }),
   permissions: many(rolePermissions),
@@ -973,6 +1113,11 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   // per user (unique on emailConnections.userId, hence `one` here despite no explicit relationName
   // pairing needed — there is only one relation between these two tables).
   emailConnection: one(emailConnections, { fields: [users.id], references: [emailConnections.userId] }),
+  // Phase 9: sequences, Stage 2 — no relationName needed for either: sequences and
+  // sequenceEnrollments each carry only ONE foreign key to users (createdById, enrolledById
+  // respectively), so there's no ambiguity for Drizzle to resolve.
+  createdSequences: many(sequences),
+  sequenceEnrollments: many(sequenceEnrollments),
 }));
 
 export const companiesRelations = relations(companies, ({ one, many }) => ({
@@ -1013,6 +1158,8 @@ export const leadsRelations = relations(leads, ({ one, many }) => ({
   leadComments: many(comments),
   activities: many(activities),
   notifications: many(notifications),
+  // Phase 9: sequences, Stage 2.
+  sequenceEnrollments: many(sequenceEnrollments),
 }));
 
 export const meetingsRelations = relations(meetings, ({ one }) => ({
