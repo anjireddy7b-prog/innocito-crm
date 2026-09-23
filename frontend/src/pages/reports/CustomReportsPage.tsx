@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Plus, Play, Pencil, Trash2, Users, User as UserIcon, PieChart } from 'lucide-react';
+import { Plus, Play, Pencil, Trash2, Users, User as UserIcon, PieChart, Pin, PinOff } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useAuthStore } from '@/store/authStore';
 import { PERMISSIONS } from '@/lib/permissions';
 import { apiErrorMessage } from '@/lib/api';
@@ -16,8 +17,10 @@ import {
   useReportDefinitions, useDeleteReportDefinition, useRunSavedReport,
   REPORT_GROUP_BY_LABELS, REPORT_METRIC_LABELS, type CustomReportDefinition,
 } from '@/api/reportBuilder';
+import { useMyWidgets, usePinReport, useUnpinWidget } from '@/api/dashboardWidgets';
 import { ReportBuilderDialog } from './ReportBuilderDialog';
 import { ReportResultView } from './ReportResultView';
+import { MyDashboardTab } from './MyDashboardTab';
 
 // Phase 10 (reporting/dashboard builder), slice 1 — custom report builder. Lists both the
 // caller's own personal reports and every shared (organization-wide) one, mirroring
@@ -31,12 +34,18 @@ function ReportCard({
   onEdit,
   onDelete,
   onRun,
+  pinned,
+  onTogglePin,
+  pinToggling,
 }: {
   report: CustomReportDefinition;
   canManage: boolean;
   onEdit: () => void;
   onDelete: () => void;
   onRun: () => void;
+  pinned: boolean;
+  onTogglePin: () => void;
+  pinToggling: boolean;
 }) {
   return (
     <Card className="flex flex-col">
@@ -60,16 +69,28 @@ function ReportCard({
         <Button type="button" size="sm" onClick={onRun}>
           <Play /> Run
         </Button>
-        {canManage && (
-          <div className="flex gap-1">
-            <Button type="button" variant="ghost" size="icon" onClick={onEdit} aria-label={`Edit ${report.name}`}>
-              <Pencil className="h-4 w-4" />
-            </Button>
-            <Button type="button" variant="ghost" size="icon" onClick={onDelete} aria-label={`Delete ${report.name}`}>
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-        )}
+        <div className="flex gap-1">
+          <Button
+            type="button"
+            variant={pinned ? 'secondary' : 'ghost'}
+            size="icon"
+            disabled={pinToggling}
+            onClick={onTogglePin}
+            aria-label={pinned ? `Unpin ${report.name} from My Dashboard` : `Pin ${report.name} to My Dashboard`}
+          >
+            {pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
+          </Button>
+          {canManage && (
+            <>
+              <Button type="button" variant="ghost" size="icon" onClick={onEdit} aria-label={`Edit ${report.name}`}>
+                <Pencil className="h-4 w-4" />
+              </Button>
+              <Button type="button" variant="ghost" size="icon" onClick={onDelete} aria-label={`Delete ${report.name}`}>
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
@@ -96,6 +117,13 @@ export default function CustomReportsPage() {
   const { data: reports, isLoading } = useReportDefinitions('LEAD');
   const deleteReport = useDeleteReportDefinition();
 
+  // Pin state is fetched here (not just inside MyDashboardTab) so each ReportCard on the "Reports"
+  // tab can show whether it's currently pinned, and toggle it, without needing its own tab switch.
+  const { data: widgets } = useMyWidgets();
+  const pinReport = usePinReport();
+  const unpinWidget = useUnpinWidget();
+  const widgetByReportId = new Map((widgets ?? []).map((w) => [w.reportDefinitionId, w]));
+
   const [builderOpen, setBuilderOpen] = useState(false);
   const [editing, setEditing] = useState<CustomReportDefinition | null>(null);
   const [runningId, setRunningId] = useState<string | null>(null);
@@ -105,6 +133,21 @@ export default function CustomReportsPage() {
     return report.isShared ? canManageShared : report.createdById === currentUserId;
   }
 
+  async function togglePin(report: CustomReportDefinition) {
+    const existing = widgetByReportId.get(report.id);
+    try {
+      if (existing) {
+        await unpinWidget.mutateAsync(existing.id);
+        toast.success(`Removed "${report.name}" from My Dashboard`);
+      } else {
+        await pinReport.mutateAsync(report.id);
+        toast.success(`Pinned "${report.name}" to My Dashboard`);
+      }
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Failed to update your dashboard'));
+    }
+  }
+
   const personal = (reports ?? []).filter((r) => !r.isShared);
   const shared = (reports ?? []).filter((r) => r.isShared);
 
@@ -112,7 +155,7 @@ export default function CustomReportsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Custom Reports"
-        description="Build your own report — pick a dimension to group by, a measure, and optional filters — then save and re-run it any time."
+        description="Build your own report — pick a dimension to group by, a measure, and optional filters — then save and re-run it any time. Pin any report to My Dashboard to see it there live."
         actions={
           <Button onClick={() => { setEditing(null); setBuilderOpen(true); }}>
             <Plus /> New Report
@@ -120,70 +163,89 @@ export default function CustomReportsPage() {
         }
       />
 
-      {isLoading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-48 rounded-2xl" />)}
-        </div>
-      ) : (reports ?? []).length === 0 ? (
-        <EmptyState
-          icon={PieChart}
-          title="No custom reports yet"
-          description="Create your first report to see leads grouped and measured exactly the way you want."
-          action={
-            <Button onClick={() => { setEditing(null); setBuilderOpen(true); }}>
-              <Plus /> New Report
-            </Button>
-          }
-        />
-      ) : (
-        <div className="space-y-6">
-          <div className="space-y-3">
-            <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              <UserIcon className="h-3.5 w-3.5" /> My Reports
-            </p>
-            {personal.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No personal reports yet.</p>
-            ) : (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {personal.map((r) => (
-                  <ReportCard
-                    key={r.id}
-                    report={r}
-                    canManage={canManage(r)}
-                    onRun={() => setRunningId(r.id)}
-                    onEdit={() => { setEditing(r); setBuilderOpen(true); }}
-                    onDelete={() => setDeleteTarget(r)}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
+      <Tabs defaultValue="reports">
+        <TabsList>
+          <TabsTrigger value="reports">Reports</TabsTrigger>
+          <TabsTrigger value="dashboard">My Dashboard</TabsTrigger>
+        </TabsList>
 
-          {(shared.length > 0 || canManageShared) && (
-            <div className="space-y-3 border-t border-border/60 pt-6">
-              <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                <Users className="h-3.5 w-3.5" /> Shared with your team
-              </p>
-              {shared.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No shared reports yet.</p>
-              ) : (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {shared.map((r) => (
-                    <ReportCard
-                      key={r.id}
-                      report={r}
-                      canManage={canManage(r)}
-                      onRun={() => setRunningId(r.id)}
-                      onEdit={() => { setEditing(r); setBuilderOpen(true); }}
-                      onDelete={() => setDeleteTarget(r)}
-                    />
-                  ))}
+        <TabsContent value="reports" className="space-y-6">
+          {isLoading ? (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-48 rounded-2xl" />)}
+            </div>
+          ) : (reports ?? []).length === 0 ? (
+            <EmptyState
+              icon={PieChart}
+              title="No custom reports yet"
+              description="Create your first report to see leads grouped and measured exactly the way you want."
+              action={
+                <Button onClick={() => { setEditing(null); setBuilderOpen(true); }}>
+                  <Plus /> New Report
+                </Button>
+              }
+            />
+          ) : (
+            <div className="space-y-6">
+              <div className="space-y-3">
+                <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <UserIcon className="h-3.5 w-3.5" /> My Reports
+                </p>
+                {personal.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No personal reports yet.</p>
+                ) : (
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {personal.map((r) => (
+                      <ReportCard
+                        key={r.id}
+                        report={r}
+                        canManage={canManage(r)}
+                        onRun={() => setRunningId(r.id)}
+                        onEdit={() => { setEditing(r); setBuilderOpen(true); }}
+                        onDelete={() => setDeleteTarget(r)}
+                        pinned={widgetByReportId.has(r.id)}
+                        onTogglePin={() => togglePin(r)}
+                        pinToggling={pinReport.isPending || unpinWidget.isPending}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {(shared.length > 0 || canManageShared) && (
+                <div className="space-y-3 border-t border-border/60 pt-6">
+                  <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <Users className="h-3.5 w-3.5" /> Shared with your team
+                  </p>
+                  {shared.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No shared reports yet.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                      {shared.map((r) => (
+                        <ReportCard
+                          key={r.id}
+                          report={r}
+                          canManage={canManage(r)}
+                          onRun={() => setRunningId(r.id)}
+                          onEdit={() => { setEditing(r); setBuilderOpen(true); }}
+                          onDelete={() => setDeleteTarget(r)}
+                          pinned={widgetByReportId.has(r.id)}
+                          onTogglePin={() => togglePin(r)}
+                          pinToggling={pinReport.isPending || unpinWidget.isPending}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           )}
-        </div>
-      )}
+        </TabsContent>
+
+        <TabsContent value="dashboard">
+          <MyDashboardTab />
+        </TabsContent>
+      </Tabs>
 
       <ReportBuilderDialog open={builderOpen} onOpenChange={setBuilderOpen} existing={editing} />
       <ReportRunDialog reportId={runningId} name={reports?.find((r) => r.id === runningId)?.name} onOpenChange={(o) => !o && setRunningId(null)} />

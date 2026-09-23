@@ -30,6 +30,7 @@ import { reportsRouter } from './reports/reports.routes';
 import { integrationsRouter } from './integrations/integrations.routes';
 import { sequencesRouter } from './sequences/sequences.routes';
 import { reportBuilderRouter } from './reportBuilder/reportBuilder.routes';
+import { dashboardWidgetsRouter } from './dashboardWidgets/dashboardWidgets.routes';
 
 export const apiRouter = Router();
 
@@ -64,3 +65,4 @@ apiRouter.use('/reports', reportsRouter);
 apiRouter.use('/integrations', integrationsRouter);
 apiRouter.use('/sequences', sequencesRouter);
 apiRouter.use('/custom-reports', reportBuilderRouter);
+apiRouter.use('/dashboard-widgets', dashboardWidgetsRouter);

@@ -1059,6 +1059,45 @@ export const customReportDefinitions = pgTable(
 );
 
 // ----------------------------------------------------------------------------
+// Phase 10 — reporting/dashboard builder, slice 2: dashboard widget pinning
+// ----------------------------------------------------------------------------
+// The other half of "reporting/dashboard builder" deliberately deferred out of slice 1 (see
+// customReportDefinitions' own comment above) — letting a user pin any custom report they can see
+// (their own, or a shared one) onto their own personal dashboard layout. Unlike
+// customReportDefinitions, a widget has no isShared/ownership model to speak of: it's inherently
+// personal, scoped by userId alone, the same way every user already gets their own view of the
+// fixed Dashboard page. `organizationId` is still stored (rather than derived through a join every
+// time) purely so every query here can use the same tenant-scoping index pattern as every other
+// table in this schema — it is never used to decide visibility, only userId is.
+//
+// `reportDefinitionId` cascades on delete: unpinning a report that's since been deleted should
+// never leave an orphaned widget row or a foreign-key error on the report's own delete path (see
+// reportBuilder.service.ts's deleteReportDefinition, which is otherwise unaware this table exists).
+// `userId` deliberately does NOT cascade — this app deactivates users rather than hard-deleting
+// them (see customObjectRecords.createdById's own comment), so a dangling reference here would
+// indicate a real data-integrity bug, not an expected case to silently clean up.
+export const dashboardWidgets = pgTable(
+  'dashboard_widgets',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
+    userId: uuid('user_id').notNull().references(() => users.id),
+    reportDefinitionId: uuid('report_definition_id')
+      .notNull()
+      .references(() => customReportDefinitions.id, { onDelete: 'cascade' }),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('dashboard_widgets_org_user_idx').on(t.organizationId, t.userId),
+    // A user can pin the same report onto their dashboard at most once — pinning again is a no-op
+    // from their point of view, not a second widget (see dashboardWidgets.service.ts's pinReport).
+    uniqueIndex('dashboard_widgets_user_report_unique').on(t.userId, t.reportDefinitionId),
+  ]
+);
+
+// ----------------------------------------------------------------------------
 // Relations (powers Drizzle's relational query API: db.query.leads.findMany({with:{...}}))
 // ----------------------------------------------------------------------------
 export const organizationsRelations = relations(organizations, ({ many }) => ({
@@ -1075,6 +1114,7 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
   savedViews: many(savedViews),
   validationRules: many(validationRules),
   customReportDefinitions: many(customReportDefinitions),
+  dashboardWidgets: many(dashboardWidgets),
 }));
 
 export const customFieldDefinitionsRelations = relations(customFieldDefinitions, ({ one }) => ({
@@ -1105,9 +1145,16 @@ export const validationRulesRelations = relations(validationRules, ({ one }) => 
   organization: one(organizations, { fields: [validationRules.organizationId], references: [organizations.id] }),
 }));
 
-export const customReportDefinitionsRelations = relations(customReportDefinitions, ({ one }) => ({
+export const customReportDefinitionsRelations = relations(customReportDefinitions, ({ one, many }) => ({
   organization: one(organizations, { fields: [customReportDefinitions.organizationId], references: [organizations.id] }),
   createdBy: one(users, { fields: [customReportDefinitions.createdById], references: [users.id] }),
+  widgets: many(dashboardWidgets),
+}));
+
+export const dashboardWidgetsRelations = relations(dashboardWidgets, ({ one }) => ({
+  organization: one(organizations, { fields: [dashboardWidgets.organizationId], references: [organizations.id] }),
+  user: one(users, { fields: [dashboardWidgets.userId], references: [users.id] }),
+  reportDefinition: one(customReportDefinitions, { fields: [dashboardWidgets.reportDefinitionId], references: [customReportDefinitions.id] }),
 }));
 
 export const casesRelations = relations(cases, ({ one, many }) => ({

@@ -190,6 +190,13 @@
       "when": 1790177145480,
       "tag": "0026_custom_reports",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1790180624190,
+      "tag": "0027_dashboard_widgets",
+      "breakpoints": true
     }
   ]
 }
