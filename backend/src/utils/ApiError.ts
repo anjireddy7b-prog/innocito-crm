@@ -26,6 +26,14 @@ export class ApiError extends Error {
   static conflict(message = 'Conflict', details?: unknown) {
     return new ApiError(409, message, details);
   }
+  // Phase 12 (billing/subscriptions). Used when a plan's usage limit (maxUsers/maxLeads — see
+  // modules/billing/plans.ts) has been reached, or an action needs an active paid plan that the
+  // org doesn't have. 402 is the semantically-closest status the HTTP spec offers for "this
+  // requires upgrading/paying," distinct from 403 (which means "you're not allowed," not "pay to
+  // unlock") — same reasoning most billing-aware SaaS APIs (Stripe's own included) use it for.
+  static paymentRequired(message = 'Payment required', details?: unknown) {
+    return new ApiError(402, message, details);
+  }
   static internal(message = 'Internal server error') {
     return new ApiError(500, message);
   }

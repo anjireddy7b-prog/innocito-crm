@@ -106,6 +106,13 @@ export const PERMISSIONS = {
   // infrastructure-adjacent tier as WEBHOOKS_MANAGE/API_KEYS_MANAGE — a connector's config
   // routinely holds a real external credential.
   CONNECTORS_MANAGE: 'connectors:manage',
+  // Phase 12 (billing/subscriptions): view the org's plan/usage/invoices, and change plans
+  // (Stripe Checkout) or open the billing portal. ADMIN-only by default — same tier as every
+  // other infrastructure/account-level permission above. Usage-limit ENFORCEMENT itself (blocking
+  // a new user or lead past the plan's limit) is not gated by this permission — it's a
+  // system-wide constraint checked in users.service.ts/leads.service.ts regardless of who's
+  // creating the row; this permission only covers looking at and changing billing itself.
+  BILLING_MANAGE: 'billing:manage',
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -227,6 +234,7 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionKey, string> = {
   [PERMISSIONS.API_KEYS_MANAGE]: 'Create, view, and revoke API keys for external integrations (read-only access)',
   [PERMISSIONS.WEBHOOKS_MANAGE]: 'Register, pause/resume, and delete outbound webhook endpoints; view their delivery history',
   [PERMISSIONS.CONNECTORS_MANAGE]: 'Register, edit, and delete third-party connector instances (Slack, HubSpot, Zoom, etc.)',
+  [PERMISSIONS.BILLING_MANAGE]: "View the organization's plan, usage, and invoices; change plans or open the billing portal",
 };
 
 /** Description seeded onto each organization's own copy of the 5 default roles. Editable

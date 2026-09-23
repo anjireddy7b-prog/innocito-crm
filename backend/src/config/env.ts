@@ -68,6 +68,17 @@ const envSchema = z.object({
   // scheduler stops retrying it. See webhooks.service.ts's BACKOFF_MINUTES for the schedule
   // between attempts.
   WEBHOOK_MAX_ATTEMPTS: z.coerce.number().min(1).default(6),
+
+  // Phase 12 (billing/subscriptions). All optional, same on/off-switch pattern as SMTP_HOST/
+  // TOKEN_ENCRYPTION_KEY above — STRIPE_SECRET_KEY is what makes billingEnabled true (see below);
+  // without it every org just stays on the FREE plan with billing actions returning a clear
+  // "not configured" error instead of a crash. STRIPE_PRO_PRICE_ID/STRIPE_ENTERPRISE_PRICE_ID are
+  // the Stripe Price IDs (created in the Stripe Dashboard) that a checkout session for that plan
+  // points at — ENTERPRISE can stay unset (a "contact sales" plan with no self-serve checkout).
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  STRIPE_PRO_PRICE_ID: z.string().optional(),
+  STRIPE_ENTERPRISE_PRICE_ID: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -94,3 +105,7 @@ export const googleOAuthEnabled =
 // encryption is on. See modules/integrations/integrations.service.ts.
 export const microsoftOAuthEnabled =
   tokenEncryptionEnabled && !!env.MICROSOFT_CLIENT_ID && !!env.MICROSOFT_CLIENT_SECRET && !!env.MICROSOFT_REDIRECT_URI;
+// True once a real Stripe secret key is configured — see utils/stripeClient.ts and
+// modules/billing/billing.service.ts. Doesn't require STRIPE_WEBHOOK_SECRET on its own (checkout/
+// portal creation don't need it), but the webhook route itself refuses to verify anything without it.
+export const billingEnabled = !!env.STRIPE_SECRET_KEY;

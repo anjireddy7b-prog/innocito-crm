@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { useMutation } from '@tanstack/react-query';
-import { KeyRound, User, Shield, Building2, Mail, Send, Unlink, CalendarClock, RefreshCw, Plus, Trash2, Code2, Webhook, Copy, Check, ChevronDown, ChevronUp, Plug, Pencil } from 'lucide-react';
+import { KeyRound, User, Shield, Building2, Mail, Send, Unlink, CalendarClock, RefreshCw, Plus, Trash2, Code2, Webhook, Copy, Check, ChevronDown, ChevronUp, Plug, Pencil, CreditCard } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -42,11 +42,20 @@ import {
   type ConnectorInstance,
 } from '@/api/connectors';
 import { ConnectorFormDialog } from './settings/ConnectorFormDialog';
+import {
+  usePlans,
+  useBillingSummary,
+  useBillingInvoices,
+  useCreateCheckoutSession,
+  useCreatePortalSession,
+  type PlanId,
+} from '@/api/billing';
 import { Switch } from '@/components/ui/switch';
+import { Progress } from '@/components/ui/progress';
 import { useAuthStore } from '@/store/authStore';
 import { PERMISSIONS } from '@/lib/permissions';
 import { apiErrorMessage } from '@/lib/api';
-import { initials, humanizeEnum } from '@/lib/utils';
+import { initials, humanizeEnum, cn } from '@/lib/utils';
 
 const schema = z.object({
   currentPassword: z.string().min(1, 'Current password is required'),
@@ -119,6 +128,10 @@ export default function SettingsPage() {
       {/* Phase 11 (API/integrations), slice 3 — same "ADMIN by default" gate as the two cards
           above; see backend/src/utils/permissions.ts's CONNECTORS_MANAGE comment. */}
       {hasPermission(PERMISSIONS.CONNECTORS_MANAGE) && <ConnectorsCard />}
+
+      {/* Phase 12 (billing/subscriptions) — same "ADMIN by default" gate as the cards above; see
+          backend/src/utils/permissions.ts's BILLING_MANAGE comment. */}
+      {hasPermission(PERMISSIONS.BILLING_MANAGE) && <BillingCard />}
 
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><KeyRound className="h-4 w-4" /> Change Password</CardTitle></CardHeader>
@@ -687,6 +700,139 @@ function ConnectorsCard() {
           }
         }}
       />
+    </Card>
+  );
+}
+
+function BillingCard() {
+  const { data: summary, isLoading } = useBillingSummary();
+  const { data: plans } = usePlans();
+  const { data: invoicesList } = useBillingInvoices();
+  const createCheckout = useCreateCheckoutSession();
+  const createPortal = useCreatePortalSession();
+  const [invoicesOpen, setInvoicesOpen] = useState(false);
+
+  function goToCheckout(planId: PlanId) {
+    createCheckout.mutate(planId, {
+      onSuccess: ({ url }) => { window.location.href = url; },
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to start checkout')),
+    });
+  }
+
+  function openPortal() {
+    createPortal.mutate(undefined, {
+      onSuccess: ({ url }) => { window.location.href = url; },
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to open billing portal')),
+    });
+  }
+
+  const currentPlanId = summary?.plan.id;
+
+  return (
+    <Card>
+      <CardHeader className="flex-row items-start justify-between gap-2 space-y-0">
+        <div>
+          <CardTitle className="flex items-center gap-2"><CreditCard className="h-4 w-4" /> Billing</CardTitle>
+          <CardDescription>
+            {summary && !summary.billingEnabled
+              ? "Stripe isn't configured on this server yet — every organization stays on the Free plan until an operator sets it up."
+              : "Manage your plan, usage, and invoices."}
+          </CardDescription>
+        </div>
+        {summary?.subscription.hasStripeCustomer && (
+          <Button size="sm" variant="outline" onClick={openPortal} disabled={createPortal.isPending}>Manage Billing</Button>
+        )}
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {isLoading || !summary ? (
+          <Skeleton className="h-24 rounded-xl" />
+        ) : (
+          <>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-medium">Current plan: {summary.plan.name}</p>
+              <Badge variant="outline">{humanizeEnum(summary.subscription.status)}</Badge>
+              {summary.subscription.cancelAtPeriodEnd && (
+                <Badge variant="outline" className="text-muted-foreground">Cancels at period end</Badge>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Users</span>
+                  <span>{summary.usage.users.used}{summary.usage.users.limit != null ? ` / ${summary.usage.users.limit}` : ' (unlimited)'}</span>
+                </div>
+                {summary.usage.users.limit != null && (
+                  <Progress value={Math.min(100, (summary.usage.users.used / summary.usage.users.limit) * 100)} />
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Leads</span>
+                  <span>{summary.usage.leads.used}{summary.usage.leads.limit != null ? ` / ${summary.usage.leads.limit}` : ' (unlimited)'}</span>
+                </div>
+                {summary.usage.leads.limit != null && (
+                  <Progress value={Math.min(100, (summary.usage.leads.used / summary.usage.leads.limit) * 100)} />
+                )}
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              {plans?.map((plan) => (
+                <div key={plan.id} className={cn('space-y-2 rounded-lg border p-3', plan.id === currentPlanId ? 'border-primary' : 'border-border/60')}>
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">{plan.name}</p>
+                    {plan.id === currentPlanId && <Badge variant="outline">Current</Badge>}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {plan.monthlyPriceUsd == null ? 'Custom pricing' : plan.monthlyPriceUsd === 0 ? 'Free' : `$${plan.monthlyPriceUsd}/mo`}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {plan.maxUsers ?? 'Unlimited'} users · {plan.maxLeads ?? 'Unlimited'} leads
+                  </p>
+                  {plan.id !== currentPlanId && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full"
+                      disabled={createCheckout.isPending || !plan.priceId}
+                      onClick={() => goToCheckout(plan.id)}
+                    >
+                      {plan.priceId ? 'Upgrade' : 'Contact Sales'}
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {!!invoicesList?.length && (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+                  onClick={() => setInvoicesOpen((o) => !o)}
+                >
+                  {invoicesOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />} Invoice history ({invoicesList.length})
+                </button>
+                {invoicesOpen && (
+                  <div className="space-y-1.5">
+                    {invoicesList.map((invoice) => (
+                      <div key={invoice.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/60 px-3 py-2 text-xs">
+                        <span>{new Date(invoice.createdAt).toLocaleDateString()}</span>
+                        <span>{(invoice.amountPaidCents / 100).toLocaleString('en-US', { style: 'currency', currency: invoice.currency.toUpperCase() })}</span>
+                        <Badge variant="outline">{humanizeEnum(invoice.status)}</Badge>
+                        {invoice.hostedInvoiceUrl && (
+                          <a href={invoice.hostedInvoiceUrl} target="_blank" rel="noreferrer" className="text-primary underline">View</a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
     </Card>
   );
 }

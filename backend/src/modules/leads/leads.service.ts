@@ -16,6 +16,7 @@ import { validateAndNormalizeCustomFields } from '@/modules/customFields/customF
 import { enforceValidationRules } from '@/modules/validationRules/validationRules.service';
 import { dispatchWebhookEvent } from '@/modules/webhooks/webhooks.service';
 import { WEBHOOK_EVENTS } from '@/modules/webhooks/webhookEvents';
+import { enforceLeadLimit } from '@/modules/billing/billing.service';
 
 /**
  * Combines a calendar date with an "HH:MM" time-of-day into one Date, the same "naive wall-clock,
@@ -236,6 +237,10 @@ async function resolveCompanyAndContact(req: Request, input: any) {
 
 export async function createLead(req: Request, input: any) {
   const org = orgId(req);
+  // Phase 12 (billing/subscriptions): the FREE plan's maxLeads limit (and any other plan's) is
+  // enforced before any company/contact resolution or insert runs — see enforceUserLimit's
+  // matching comment in users.service.ts's createUser.
+  await enforceLeadLimit(org);
   const { companyId, contactId } = await resolveCompanyAndContact(req, input);
   // Phase 4: validated/normalized against this org's LEAD field definitions — rejects unknown
   // keys, checks per-type shape, and enforces required fields (see customFields.service.ts).

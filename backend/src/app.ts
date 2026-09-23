@@ -12,6 +12,7 @@ import { sanitizeBody } from '@/middleware/sanitize';
 import { issueCsrfToken } from '@/middleware/csrf';
 import { notFoundHandler, errorHandler } from '@/middleware/errorHandler';
 import { apiRouter } from '@/modules/router';
+import { webhookHandler as billingWebhookHandler } from '@/modules/billing/billing.controller';
 
 export function createApp(): Application {
   const app = express();
@@ -36,6 +37,16 @@ export function createApp(): Application {
   );
 
   app.use(compression());
+
+  // Phase 12 (billing/subscriptions): registered directly on `app`, at this exact path, BEFORE
+  // the global express.json() below — Stripe's webhook signature check (billing.service.ts's
+  // handleStripeWebhook, via stripe.webhooks.constructEvent) needs the exact raw request bytes
+  // it originally signed, not a JSON.parse()'d-and-reserialized copy of them. express.raw() here
+  // intercepts and fully handles this one path+method; every other /api/billing/* route (and
+  // everything else in the app) still flows through express.json() normally, mounted below via
+  // apiRouter as usual.
+  app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), billingWebhookHandler);
+
   app.use(express.json({ limit: '2mb' }));
   app.use(express.urlencoded({ extended: true, limit: '2mb' }));
   app.use(cookieParser());

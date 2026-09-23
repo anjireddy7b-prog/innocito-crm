@@ -1258,6 +1258,63 @@ export const connectorInstances = pgTable(
 );
 
 // ----------------------------------------------------------------------------
+// Phase 12 — billing/subscriptions
+// ----------------------------------------------------------------------------
+// One row per organization (unique organizationId — this is a one-to-one, modeled as its own
+// table rather than columns bolted onto `organizations` so it can be created lazily: see
+// billing.service.ts's getOrCreateSubscription, which inserts a FREE-plan row the first time an
+// org's billing is looked at, rather than requiring a backfill migration for every org that
+// existed before this phase). `planId` is validated against the fixed, in-code PLANS catalog
+// (modules/billing/plans.ts) — not a DB enum — same "growable without a migration" shape as
+// apiKeys.permissions/webhookEndpoints.eventTypes/connectorInstances.providerId. `status` mirrors
+// Stripe's own subscription status values closely enough to map 1:1 in the webhook handler
+// without a translation table. stripeCustomerId/stripeSubscriptionId are null until an org
+// actually starts a paid checkout — every org starts on FREE with both null.
+export const subscriptionStatusEnum = pgEnum('subscription_status', ['ACTIVE', 'TRIALING', 'PAST_DUE', 'CANCELED', 'INCOMPLETE']);
+
+export const subscriptions = pgTable(
+  'subscriptions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().unique().references(() => organizations.id),
+    planId: varchar('plan_id', { length: 50 }).notNull().default('FREE'),
+    status: subscriptionStatusEnum('status').notNull().default('ACTIVE'),
+    stripeCustomerId: varchar('stripe_customer_id', { length: 255 }),
+    stripeSubscriptionId: varchar('stripe_subscription_id', { length: 255 }).unique(),
+    currentPeriodEnd: timestamp('current_period_end'),
+    cancelAtPeriodEnd: boolean('cancel_at_period_end').notNull().default(false),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  }
+);
+
+// A local mirror of Stripe's own invoice objects, populated exclusively by the `invoice.paid` /
+// `invoice.payment_failed` webhook events (see billing.service.ts) — never written from a
+// user-facing request. This exists so the billing page can list invoice history without making a
+// live Stripe API call on every page load; `hostedInvoiceUrl` is where "download PDF" / "view
+// invoice" actually links to (Stripe hosts it, this app never stores the PDF itself).
+export const invoices = pgTable(
+  'invoices',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
+    stripeInvoiceId: varchar('stripe_invoice_id', { length: 255 }).notNull().unique(),
+    amountDueCents: integer('amount_due_cents').notNull(),
+    amountPaidCents: integer('amount_paid_cents').notNull(),
+    currency: varchar('currency', { length: 10 }).notNull(),
+    // Stripe's own invoice status strings (draft/open/paid/uncollectible/void) — stored verbatim
+    // rather than re-mapped into a local enum, since this table exists only to mirror Stripe's
+    // data for display, not to be queried/branched on by business logic in this app.
+    status: varchar('status', { length: 30 }).notNull(),
+    hostedInvoiceUrl: text('hosted_invoice_url'),
+    periodStart: timestamp('period_start'),
+    periodEnd: timestamp('period_end'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('invoices_org_idx').on(t.organizationId)]
+);
+
+// ----------------------------------------------------------------------------
 // Relations (powers Drizzle's relational query API: db.query.leads.findMany({with:{...}}))
 // ----------------------------------------------------------------------------
 export const organizationsRelations = relations(organizations, ({ many }) => ({
@@ -1278,6 +1335,8 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
   apiKeys: many(apiKeys),
   webhookEndpoints: many(webhookEndpoints),
   connectorInstances: many(connectorInstances),
+  subscriptions: many(subscriptions),
+  invoices: many(invoices),
 }));
 
 export const apiKeysRelations = relations(apiKeys, ({ one }) => ({
@@ -1299,6 +1358,14 @@ export const webhookDeliveriesRelations = relations(webhookDeliveries, ({ one })
 export const connectorInstancesRelations = relations(connectorInstances, ({ one }) => ({
   organization: one(organizations, { fields: [connectorInstances.organizationId], references: [organizations.id] }),
   createdBy: one(users, { fields: [connectorInstances.createdById], references: [users.id] }),
+}));
+
+export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
+  organization: one(organizations, { fields: [subscriptions.organizationId], references: [organizations.id] }),
+}));
+
+export const invoicesRelations = relations(invoices, ({ one }) => ({
+  organization: one(organizations, { fields: [invoices.organizationId], references: [organizations.id] }),
 }));
 
 export const customFieldDefinitionsRelations = relations(customFieldDefinitions, ({ one }) => ({

@@ -51,4 +51,6 @@ export const PERMISSIONS = {
   WEBHOOKS_MANAGE: 'webhooks:manage',
   // Phase 11 (API/integrations), slice 3 — mirrors backend/src/utils/permissions.ts.
   CONNECTORS_MANAGE: 'connectors:manage',
+  // Phase 12 (billing/subscriptions) — mirrors backend/src/utils/permissions.ts.
+  BILLING_MANAGE: 'billing:manage',
 } as const;

@@ -9,6 +9,7 @@ import { recordAudit } from '@/utils/auditLogger';
 import { paginationMeta, toLimitOffset } from '@/utils/pagination';
 import { orgId } from '@/utils/tenant';
 import { sendWelcomeEmail, sendPasswordResetEmail } from '@/utils/accountEmails';
+import { enforceUserLimit } from '@/modules/billing/billing.service';
 
 function generateTempPassword(): string {
   const raw = crypto.randomBytes(9).toString('base64url');
@@ -98,6 +99,10 @@ export async function createUser(
   }
 ) {
   const org = orgId(req);
+  // Phase 12 (billing/subscriptions): the FREE plan's maxUsers limit (and any other plan's) is
+  // enforced right here, before any lookup or insert — a 402 here means nothing else in this
+  // function has run yet, so there's no partial write to unwind.
+  await enforceUserLimit(org);
   // Phase 3: roles are tenant-scoped, so this lookup must confirm the role actually belongs to
   // the caller's own organization — without the organizationId condition, a caller could pass
   // another organization's roleId (a real cross-tenant privilege risk, not just a 404).
