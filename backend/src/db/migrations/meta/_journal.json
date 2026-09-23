@@ -141,6 +141,13 @@
       "when": 1790111240371,
       "tag": "0019_validation_rules",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1790129611016,
+      "tag": "0020_duplicate_merge_audit_action",
+      "breakpoints": true
     }
   ]
 }

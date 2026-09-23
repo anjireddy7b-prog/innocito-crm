@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Target, Building2, Users, Megaphone, Activity, CalendarClock, ListChecks,
   FileText, BarChart3, UserCog, ShieldCheck, KeyRound, Settings, ChevronLeft, ChevronRight,
-  SlidersHorizontal, Box,
+  SlidersHorizontal, Box, GitMerge,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useUIStore } from '@/store/uiStore';
@@ -25,6 +25,10 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Leads', to: '/leads', icon: Target, permission: PERMISSIONS.LEADS_VIEW },
   { label: 'Accounts', to: '/companies', icon: Building2 },
   { label: 'Contacts', to: '/contacts', icon: Users },
+  // Phase 9: detection is open to any authenticated user (mirrors Accounts/Contacts above having
+  // no permission gate either) — merging itself is gated per-entity-type on the page, on the same
+  // COMPANIES_MANAGE/CONTACTS_MANAGE permission that already gates deleting that entity type.
+  { label: 'Duplicates', to: '/duplicates', icon: GitMerge },
   { label: 'Campaigns', to: '/campaigns', icon: Megaphone },
   { label: 'Meetings', to: '/meetings', icon: CalendarClock },
   { label: 'Tasks', to: '/tasks', icon: ListChecks },

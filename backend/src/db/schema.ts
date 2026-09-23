@@ -47,6 +47,8 @@ export const notificationTypeEnum = pgEnum('notification_type', [
 export const auditActionEnum = pgEnum('audit_action', [
   'CREATE', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT', 'LOGIN_FAILED', 'PASSWORD_RESET',
   'ROLE_CHANGED', 'STATUS_CHANGED', 'ASSIGNMENT_CHANGED', 'EXPORT', 'EMAIL_CHANGED',
+  // Phase 9: duplicate-detection merge (companies/contacts) — see modules/duplicates/duplicates.service.ts.
+  'MERGE',
 ]);
 // Phase 4: custom fields engine. `entityType` on custom_field_definitions is schema-generic
 // (varchar, not an enum limited to LEAD) so a future phase can extend to companies/contacts
