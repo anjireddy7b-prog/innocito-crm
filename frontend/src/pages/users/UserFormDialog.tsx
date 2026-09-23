@@ -87,7 +87,7 @@ export function UserFormDialog({
           jobTitle: values.jobTitle || undefined,
           roleId: values.roleId,
         });
-        toast.success(`User created — temporary password: ${result.temporaryPassword}`);
+        toast.success(`User created — a welcome email with login details was sent to ${values.email}. Backup temporary password: ${result.temporaryPassword}`, { duration: 15000 });
         onOpenChange(false);
         onCreated?.(result.temporaryPassword);
       }
@@ -106,7 +106,7 @@ export function UserFormDialog({
           <DialogDescription>
             {isEdit
               ? "Update role and profile details. Changing the Email ID updates this user's login and the address every system notification is sent to."
-              : 'Only Admins can create accounts — a temporary password will be generated automatically.'}
+              : "Only Admins can create accounts — a temporary password will be generated and emailed to them, along with a login link."}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 gap-4 sm:grid-cols-2">

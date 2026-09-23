@@ -8,6 +8,7 @@ import { ApiError } from '@/utils/ApiError';
 import { recordAudit } from '@/utils/auditLogger';
 import { paginationMeta, toLimitOffset } from '@/utils/pagination';
 import { orgId } from '@/utils/tenant';
+import { sendWelcomeEmail, sendPasswordResetEmail } from '@/utils/accountEmails';
 
 function generateTempPassword(): string {
   const raw = crypto.randomBytes(9).toString('base64url');
@@ -132,6 +133,11 @@ export async function createUser(
   const user = await getUserById(org, created.id);
   await recordAudit({ req, action: 'CREATE', entityType: 'User', entityId: user.id, newValues: user });
 
+  // Best-effort (sendEmail/sendWelcomeEmail never throw — see utils/emailer.ts) — the temporary
+  // password is still returned below either way, so a failed or unconfigured send never leaves the
+  // Admin with no way to hand it to the new hire.
+  await sendWelcomeEmail({ to: user.email, firstName: user.firstName, temporaryPassword: tempPassword });
+
   return { user, temporaryPassword: tempPassword };
 }
 
@@ -229,6 +235,10 @@ export async function resetPassword(req: Request, id: string, newPassword?: stri
   const passwordHash = await argon2.hash(tempPassword);
   await db.update(users).set({ passwordHash, mustChangePassword: true, updatedAt: new Date() }).where(eq(users.id, id));
   await recordAudit({ req, action: 'PASSWORD_RESET', entityType: 'User', entityId: id });
+
+  // Same best-effort contract as createUser's welcome email above.
+  await sendPasswordResetEmail({ to: existing.email, firstName: existing.firstName, temporaryPassword: tempPassword });
+
   return { temporaryPassword: tempPassword };
 }
 

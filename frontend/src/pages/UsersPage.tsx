@@ -132,13 +132,13 @@ function ResetPasswordDialog({ user, onOpenChange }: { user: AppUser | null; onO
       open={!!user}
       onOpenChange={onOpenChange}
       title={`Reset password for ${user?.firstName}?`}
-      description="A new temporary password will be generated. The user must change it on next login."
+      description="A new temporary password will be generated and emailed to them, along with a login link. They must change it on next login."
       confirmLabel="Reset Password"
       loading={resetPassword.isPending}
       onConfirm={async () => {
         try {
           const result = await resetPassword.mutateAsync();
-          toast.success(`Temporary password: ${result.temporaryPassword}`, { duration: 15000 });
+          toast.success(`Password reset — an email with the new temporary password was sent to ${user?.email}. Backup temporary password: ${result.temporaryPassword}`, { duration: 15000 });
         } catch (err) {
           toast.error(apiErrorMessage(err, 'Failed to reset password'));
         } finally {
