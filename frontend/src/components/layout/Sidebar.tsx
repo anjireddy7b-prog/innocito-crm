@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Target, Building2, Users, Megaphone, Activity, CalendarClock, ListChecks,
   FileText, BarChart3, UserCog, ShieldCheck, KeyRound, Settings, ChevronLeft, ChevronRight,
-  SlidersHorizontal, Box, GitMerge,
+  SlidersHorizontal, Box, GitMerge, LifeBuoy,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useUIStore } from '@/store/uiStore';
@@ -32,6 +32,11 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Campaigns', to: '/campaigns', icon: Megaphone },
   { label: 'Meetings', to: '/meetings', icon: CalendarClock },
   { label: 'Tasks', to: '/tasks', icon: ListChecks },
+  // Phase 9 ("advanced CRM" slice) — case management. Ungated like Accounts/Contacts/Duplicates
+  // above: viewing a case needs no permission, only creating/editing/deleting one does (see
+  // CASES_MANAGE's own comment in lib/permissions.ts) — the nav item itself stays visible to
+  // everyone so a caller without it can still see and comment on cases, just not manage them.
+  { label: 'Cases', to: '/cases', icon: LifeBuoy },
   { label: 'Documents', to: '/documents', icon: FileText },
   { label: 'Activity Feed', to: '/activities', icon: Activity },
   { label: 'Reports', to: '/reports', icon: BarChart3, permission: PERMISSIONS.REPORTS_VIEW },

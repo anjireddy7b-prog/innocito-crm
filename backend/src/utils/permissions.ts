@@ -41,6 +41,12 @@ export const PERMISSIONS = {
   // permission out for (unlike custom fields, which every lead viewer needs the list of to render
   // the form).
   VALIDATION_RULES_MANAGE: 'validation_rules:manage',
+  // Phase 9 ("advanced CRM" slice): create/edit/delete cases and their comments, and change a
+  // case's status/priority/assignment. One permission for the whole module — same "management" tier
+  // as COMPANIES_MANAGE/CONTACTS_MANAGE below — since a case has no separate viewing audience to
+  // carve a "view" permission out for; viewing (GET /cases, GET /cases/:id) is unconditional for any
+  // authenticated org member, mirroring Companies/Contacts themselves having no view-time gate.
+  CASES_MANAGE: 'cases:manage',
 
   LEADS_CREATE: 'leads:create',
   LEADS_VIEW: 'leads:view',
@@ -88,6 +94,7 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     PERMISSIONS.COMMENTS_CREATE,
     PERMISSIONS.DASHBOARD_VIEW,
     PERMISSIONS.REPORTS_VIEW,
+    PERMISSIONS.CASES_MANAGE,
   ],
   SALES: [
     PERMISSIONS.LEADS_VIEW,
@@ -98,6 +105,7 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     PERMISSIONS.COMMENTS_CREATE,
     PERMISSIONS.DASHBOARD_VIEW,
     PERMISSIONS.REPORTS_VIEW,
+    PERMISSIONS.CASES_MANAGE,
   ],
   DELIVERY: [
     PERMISSIONS.LEADS_VIEW,
@@ -108,6 +116,11 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     PERMISSIONS.COMMENTS_CREATE,
     PERMISSIONS.DASHBOARD_VIEW,
     PERMISSIONS.REPORTS_VIEW,
+    // Phase 9: DELIVERY owns technical/post-sale delivery, the team most likely to work support
+    // cases day to day — same "operational, hands-on" tier as its existing TASKS_MANAGE/
+    // MEETINGS_MANAGE grants, not the org-wide-reference-data tier COMPANIES_MANAGE/CONTACTS_MANAGE
+    // sits in (which DELIVERY deliberately does NOT hold either).
+    PERMISSIONS.CASES_MANAGE,
   ],
   MANAGEMENT: [
     PERMISSIONS.LEADS_VIEW,
@@ -141,6 +154,7 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionKey, string> = {
   [PERMISSIONS.CUSTOM_OBJECTS_MANAGE]: 'Create, edit, and delete custom object types and their records',
   [PERMISSIONS.SAVED_VIEWS_MANAGE_SHARED]: 'Create, edit, and delete shared (organization-wide) saved views',
   [PERMISSIONS.VALIDATION_RULES_MANAGE]: 'Create, edit, and delete validation rules on leads',
+  [PERMISSIONS.CASES_MANAGE]: 'Create, edit, and delete cases and case comments; change case status, priority, and assignment',
   [PERMISSIONS.LEADS_CREATE]: 'Create new leads',
   [PERMISSIONS.LEADS_VIEW]: 'View leads',
   [PERMISSIONS.LEADS_EDIT_OWN]: 'Edit leads you are assigned to / own / created',

@@ -1,7 +1,7 @@
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { humanizeEnum } from '@/lib/utils';
-import type { LeadStatus, LeadPriority, TaskStatus, MeetingStatus } from '@/types';
+import type { LeadStatus, LeadPriority, TaskStatus, MeetingStatus, CaseStatus, CasePriority } from '@/types';
 
 const LEAD_STATUS_STYLES: Record<LeadStatus, string> = {
   NEW: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
@@ -56,4 +56,30 @@ const MEETING_STATUS_STYLES: Record<MeetingStatus, string> = {
 
 export function MeetingStatusBadge({ status, className }: { status: MeetingStatus; className?: string }) {
   return <Badge className={cn('border-transparent font-medium', MEETING_STATUS_STYLES[status], className)}>{humanizeEnum(status)}</Badge>;
+}
+
+// Phase 9 ("advanced CRM" slice) — case management. Its own style maps (not reused from
+// LeadStatus/LeadPriority) since CaseStatus/CasePriority are their own enums — see types/index.ts.
+const CASE_STATUS_STYLES: Record<CaseStatus, string> = {
+  NEW: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+  OPEN: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+  PENDING: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+  ON_HOLD: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300',
+  RESOLVED: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+  CLOSED: 'bg-neutral-200 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400',
+};
+
+export function CaseStatusBadge({ status, className }: { status: CaseStatus; className?: string }) {
+  return <Badge className={cn('border-transparent font-medium', CASE_STATUS_STYLES[status], className)}>{humanizeEnum(status)}</Badge>;
+}
+
+const CASE_PRIORITY_STYLES: Record<CasePriority, string> = {
+  LOW: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+  MEDIUM: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+  HIGH: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
+  URGENT: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+};
+
+export function CasePriorityBadge({ priority, className }: { priority: CasePriority; className?: string }) {
+  return <Badge className={cn('border-transparent font-medium', CASE_PRIORITY_STYLES[priority], className)}>{humanizeEnum(priority)}</Badge>;
 }

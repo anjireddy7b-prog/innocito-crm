@@ -10,6 +10,7 @@ export const PERMISSIONS = {
   CUSTOM_OBJECTS_MANAGE: 'custom_objects:manage',
   SAVED_VIEWS_MANAGE_SHARED: 'saved_views:manage_shared',
   VALIDATION_RULES_MANAGE: 'validation_rules:manage',
+  CASES_MANAGE: 'cases:manage',
 
   LEADS_CREATE: 'leads:create',
   LEADS_VIEW: 'leads:view',

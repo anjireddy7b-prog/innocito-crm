@@ -16,6 +16,12 @@ export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
 
 export type DocumentType = 'PROPOSAL' | 'MOM' | 'PRESENTATION' | 'CONTRACT' | 'BROCHURE' | 'OTHER';
 
+// Phase 9 ("advanced CRM" slice) — case management. Its own status/priority vocabulary, not
+// reused from LeadStatus/LeadPriority — see backend/src/db/schema.ts's caseStatusEnum/
+// casePriorityEnum comment for why.
+export type CaseStatus = 'NEW' | 'OPEN' | 'PENDING' | 'ON_HOLD' | 'RESOLVED' | 'CLOSED';
+export type CasePriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+
 export const LEAD_STATUSES: LeadStatus[] = [
   'NEW', 'CONTACTED', 'QUALIFIED', 'MEETING_SCHEDULED', 'MEETING_DONE', 'DEMO_SCHEDULED',
   'DEMO_DONE', 'PROPOSAL_SENT', 'NEGOTIATION', 'ON_HOLD', 'WON', 'LOST', 'DISQUALIFIED',
@@ -214,6 +220,39 @@ export interface Contact {
   createdAt: string;
   company?: CompanySummary | null;
   leads?: Lead[];
+}
+
+export interface CaseComment {
+  id: string;
+  caseId: string;
+  userId: string;
+  body: string;
+  editedAt: string | null;
+  createdAt: string;
+  user: { id: string; firstName: string; lastName: string; avatarUrl?: string | null };
+}
+
+export interface Case {
+  id: string;
+  displayId: string;
+  caseNumber: number;
+  subject: string;
+  description: string | null;
+  status: CaseStatus;
+  priority: CasePriority;
+  companyId: string | null;
+  contactId: string | null;
+  assignedToId: string | null;
+  createdById: string | null;
+  resolvedAt: string | null;
+  closedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  company?: CompanySummary | null;
+  contact?: ContactSummary | null;
+  assignedTo?: UserSummary | null;
+  createdBy?: UserSummary | null;
+  comments?: CaseComment[];
 }
 
 export interface Campaign {

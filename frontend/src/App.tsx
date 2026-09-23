@@ -16,6 +16,8 @@ const CompanyDetailPage = lazy(() => import('@/pages/companies/CompanyDetailPage
 const ContactsListPage = lazy(() => import('@/pages/contacts/ContactsListPage'));
 const ContactDetailPage = lazy(() => import('@/pages/contacts/ContactDetailPage'));
 const DuplicatesPage = lazy(() => import('@/pages/duplicates/DuplicatesPage'));
+const CasesListPage = lazy(() => import('@/pages/cases/CasesListPage'));
+const CaseDetailPage = lazy(() => import('@/pages/cases/CaseDetailPage'));
 const CampaignsListPage = lazy(() => import('@/pages/campaigns/CampaignsListPage'));
 const CampaignDetailPage = lazy(() => import('@/pages/campaigns/CampaignDetailPage'));
 const MeetingsPage = lazy(() => import('@/pages/MeetingsPage'));
@@ -68,6 +70,9 @@ export default function App() {
           <Route path="/contacts/:id" element={<ContactDetailPage />} />
 
           <Route path="/duplicates" element={<DuplicatesPage />} />
+
+          <Route path="/cases" element={<CasesListPage />} />
+          <Route path="/cases/:id" element={<CaseDetailPage />} />
 
           <Route path="/campaigns" element={<CampaignsListPage />} />
           <Route path="/campaigns/:id" element={<CampaignDetailPage />} />

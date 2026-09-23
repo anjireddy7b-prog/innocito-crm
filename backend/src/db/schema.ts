@@ -57,6 +57,12 @@ export const auditActionEnum = pgEnum('audit_action', [
 export const customFieldTypeEnum = pgEnum('custom_field_type', [
   'TEXT', 'TEXTAREA', 'NUMBER', 'DATE', 'BOOLEAN', 'SELECT', 'MULTI_SELECT',
 ]);
+// Phase 9 ("advanced CRM" slice) — case management. A case is a post-sale support/service record,
+// deliberately its own status vocabulary rather than reusing leadStatusEnum (a case is never "won"
+// or "qualified") — same "define your own enum per entity even where values overlap" precedent as
+// taskPriorityEnum vs leadPriorityEnum (URGENT vs CRITICAL) below. See modules/cases/cases.service.ts.
+export const caseStatusEnum = pgEnum('case_status', ['NEW', 'OPEN', 'PENDING', 'ON_HOLD', 'RESOLVED', 'CLOSED']);
+export const casePriorityEnum = pgEnum('case_priority', ['LOW', 'MEDIUM', 'HIGH', 'URGENT']);
 
 // ----------------------------------------------------------------------------
 // Multi-tenancy
@@ -562,6 +568,69 @@ export const leads = pgTable(
 );
 
 // ----------------------------------------------------------------------------
+// Phase 9 ("advanced CRM" slice) — case management
+// ----------------------------------------------------------------------------
+// A post-sale support/service record, independent of the sales pipeline (leads.status). Optionally
+// linked to a Company and/or Contact (both `set null` on delete, same pattern as leads.companyId/
+// contactId — a case should outlive the account record it referenced, not vanish with it) and to an
+// assignee. Deliberately NOT linked to a lead: a case can exist for a customer with no open lead at
+// all, and tying it to one would force every case to pretend it's pipeline activity.
+//
+// Kept fully self-contained (its own case_comments table below, rather than reusing the leads-only
+// `comments`/`activities`/`notifications` tables) — those three all have a NOT NULL or otherwise
+// lead-shaped foreign key wired through every call site that writes to them today, so bolting a
+// caseId onto them would mean threading a second, always-optional entity reference through code
+// that has never had to consider one. A dedicated table costs one small migration and duplicates a
+// well-understood shape (mirrors `comments` almost exactly); it does not risk regressing every
+// existing lead-comment/activity/notification code path. Same reasoning that kept Phase 9's
+// duplicate-merge feature out of the shared audit/activity plumbing beyond the one new MERGE enum
+// value it strictly needed.
+export const cases = pgTable(
+  'cases',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
+    caseNumber: integer('case_number').notNull().unique().generatedAlwaysAsIdentity(),
+    companyId: uuid('company_id').references(() => companies.id, { onDelete: 'set null' }),
+    contactId: uuid('contact_id').references(() => contacts.id, { onDelete: 'set null' }),
+    subject: varchar('subject', { length: 255 }).notNull(),
+    description: text('description'),
+    status: caseStatusEnum('status').notNull().default('NEW'),
+    priority: casePriorityEnum('priority').notNull().default('MEDIUM'),
+    assignedToId: uuid('assigned_to_id').references(() => users.id, { onDelete: 'set null' }),
+    createdById: uuid('created_by_id').references(() => users.id),
+    // Set automatically the moment `status` transitions into RESOLVED/CLOSED (mirrors
+    // tasks.completedAt's on-transition pattern) — never hand-set by a client payload.
+    resolvedAt: timestamp('resolved_at'),
+    closedAt: timestamp('closed_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('cases_org_idx').on(t.organizationId),
+    index('cases_org_status_idx').on(t.organizationId, t.status),
+    index('cases_org_created_idx').on(t.organizationId, t.createdAt),
+    index('cases_company_idx').on(t.companyId),
+    index('cases_contact_idx').on(t.contactId),
+    index('cases_assigned_to_idx').on(t.assignedToId),
+  ]
+);
+
+export const caseComments = pgTable(
+  'case_comments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
+    caseId: uuid('case_id').notNull().references(() => cases.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').notNull().references(() => users.id),
+    body: text('body').notNull(),
+    editedAt: timestamp('edited_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('case_comments_case_id_idx').on(t.caseId), index('case_comments_org_idx').on(t.organizationId)]
+);
+
+// ----------------------------------------------------------------------------
 // Engagement entities
 // ----------------------------------------------------------------------------
 export const meetings = pgTable(
@@ -772,6 +841,20 @@ export const validationRulesRelations = relations(validationRules, ({ one }) => 
   organization: one(organizations, { fields: [validationRules.organizationId], references: [organizations.id] }),
 }));
 
+export const casesRelations = relations(cases, ({ one, many }) => ({
+  organization: one(organizations, { fields: [cases.organizationId], references: [organizations.id] }),
+  company: one(companies, { fields: [cases.companyId], references: [companies.id] }),
+  contact: one(contacts, { fields: [cases.contactId], references: [contacts.id] }),
+  assignedTo: one(users, { fields: [cases.assignedToId], references: [users.id], relationName: 'caseAssignedTo' }),
+  createdBy: one(users, { fields: [cases.createdById], references: [users.id] }),
+  comments: many(caseComments),
+}));
+
+export const caseCommentsRelations = relations(caseComments, ({ one }) => ({
+  case: one(cases, { fields: [caseComments.caseId], references: [cases.id] }),
+  user: one(users, { fields: [caseComments.userId], references: [users.id] }),
+}));
+
 export const rolesRelations = relations(roles, ({ one, many }) => ({
   organization: one(organizations, { fields: [roles.organizationId], references: [organizations.id] }),
   permissions: many(rolePermissions),
@@ -796,6 +879,8 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   ownedLeads: many(leads, { relationName: 'leadOwner' }),
   sdrLeads: many(leads, { relationName: 'leadSdr' }),
   createdBySdrLeads: many(leads, { relationName: 'leadCreatedBySdr' }),
+  // Phase 9: case management.
+  assignedCases: many(cases, { relationName: 'caseAssignedTo' }),
 }));
 
 export const companiesRelations = relations(companies, ({ one, many }) => ({
@@ -804,6 +889,7 @@ export const companiesRelations = relations(companies, ({ one, many }) => ({
   leads: many(leads),
   documents: many(documents),
   activities: many(activities),
+  cases: many(cases),
 }));
 
 export const contactsRelations = relations(contacts, ({ one, many }) => ({
@@ -811,6 +897,7 @@ export const contactsRelations = relations(contacts, ({ one, many }) => ({
   company: one(companies, { fields: [contacts.companyId], references: [companies.id] }),
   leads: many(leads),
   activities: many(activities),
+  cases: many(cases),
 }));
 
 export const campaignsRelations = relations(campaigns, ({ one, many }) => ({
