@@ -51,6 +51,12 @@ export function createApp(): Application {
   app.get('/health', (_req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
   app.use('/api', apiLimiter, apiRouter);
+  // Phase 11 (API/integrations), slice 1: a versioned surface for external consumers, mounting
+  // the exact same router — every route, every behavior, identical to /api — so there is zero
+  // drift between the two and zero risk to the existing frontend, which keeps calling /api
+  // unversioned exactly as before. /api/v1 exists purely so an external integration has a stable
+  // path to depend on that this app's own frontend was never coupled to in the first place.
+  app.use('/api/v1', apiLimiter, apiRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

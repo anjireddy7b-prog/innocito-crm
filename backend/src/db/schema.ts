@@ -1098,6 +1098,53 @@ export const dashboardWidgets = pgTable(
 );
 
 // ----------------------------------------------------------------------------
+// Phase 11 — API/integrations, slice 1: versioned public API + API keys
+// ----------------------------------------------------------------------------
+// A tenant-scoped credential an external caller presents (via the `X-Api-Key` header — see
+// middleware/auth.ts) instead of logging in as a user. Deliberately **read-only**: the auth
+// middleware rejects any non-GET request authenticated via an API key, regardless of which
+// permissions the key holds. This isn't a permission-model gap — it's because dozens of
+// `*.service.ts` write paths across this codebase use `req.user.sub` directly as a `createdById`/
+// `assignedToId`/etc. foreign key (see e.g. leads.service.ts, comments.service.ts). An API key has
+// no real `users` row behind it, so letting one through to a write path would either violate an FK
+// constraint or silently attribute a write to a synthetic, non-existent actor — a materially worse
+// outcome than simply not supporting API-key writes yet. Read-only access covers the realistic v1
+// use case (external reporting/sync) without that risk; write access is a future increment once an
+// actor-attribution story for non-human callers is designed on purpose, not as a side effect.
+//
+// `permissions` stores the exact subset of the fixed PERMISSIONS catalog this key was granted at
+// creation time (validated against ALL_PERMISSIONS — see apiKeys.validation.ts), mirroring how a
+// role's grants are just a list of permission keys; unlike roles.ts's `rolePermissions` join table,
+// this is a plain jsonb array (customReportDefinitions.filters' own precedent) since a key's grants
+// are fixed at creation and never diffed/edited in place — revoke and issue a new key instead.
+// Nothing here restricts an ADMIN from granting a key every permission that exists: only ADMIN
+// holds API_KEYS_MANAGE by default, and ADMIN already holds every permission via ALL_PERMISSIONS,
+// so there is no privilege the key-creation step could escalate to that its creator didn't already
+// have. `keyHash` is a SHA-256 digest of the full secret (same approach as `refresh_tokens` — see
+// utils/tokens.ts's hashToken) so the plaintext key is never stored; `keyPrefix` is only ever the
+// first several characters, kept so a revoked/active key can be told apart in a list without ever
+// re-displaying the secret, which — like a refresh token — is shown to the creator exactly once.
+export const apiKeys = pgTable(
+  'api_keys',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
+    name: varchar('name', { length: 150 }).notNull(),
+    keyPrefix: varchar('key_prefix', { length: 24 }).notNull(),
+    keyHash: varchar('key_hash', { length: 64 }).notNull().unique(),
+    permissions: jsonb('permissions').notNull().default(sql`'[]'::jsonb`),
+    createdById: uuid('created_by_id').references(() => users.id),
+    lastUsedAt: timestamp('last_used_at'),
+    // Soft-revoke, not a delete — keeps the key's usage/audit trail (who created it, when it was
+    // last used) intact instead of erasing it the moment access is cut off.
+    revokedAt: timestamp('revoked_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [index('api_keys_org_idx').on(t.organizationId)]
+);
+
+// ----------------------------------------------------------------------------
 // Relations (powers Drizzle's relational query API: db.query.leads.findMany({with:{...}}))
 // ----------------------------------------------------------------------------
 export const organizationsRelations = relations(organizations, ({ many }) => ({
@@ -1115,6 +1162,12 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
   validationRules: many(validationRules),
   customReportDefinitions: many(customReportDefinitions),
   dashboardWidgets: many(dashboardWidgets),
+  apiKeys: many(apiKeys),
+}));
+
+export const apiKeysRelations = relations(apiKeys, ({ one }) => ({
+  organization: one(organizations, { fields: [apiKeys.organizationId], references: [organizations.id] }),
+  createdBy: one(users, { fields: [apiKeys.createdById], references: [users.id] }),
 }));
 
 export const customFieldDefinitionsRelations = relations(customFieldDefinitions, ({ one }) => ({

@@ -5,14 +5,16 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { useMutation } from '@tanstack/react-query';
-import { KeyRound, User, Shield, Building2, Mail, Send, Unlink, CalendarClock, RefreshCw } from 'lucide-react';
+import { KeyRound, User, Shield, Building2, Mail, Send, Unlink, CalendarClock, RefreshCw, Plus, Trash2, Code2 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { changePasswordRequest } from '@/api/auth';
 import { useMyOrganization, useUpdateMyOrganization } from '@/api/organizations';
 import {
@@ -22,6 +24,8 @@ import {
   connectProvider,
   type OAuthProvider,
 } from '@/api/integrations';
+import { useApiKeys, useRevokeApiKey, type ApiKey } from '@/api/apiKeys';
+import { ApiKeyFormDialog } from './settings/ApiKeyFormDialog';
 import { useAuthStore } from '@/store/authStore';
 import { PERMISSIONS } from '@/lib/permissions';
 import { apiErrorMessage } from '@/lib/api';
@@ -85,6 +89,11 @@ export default function SettingsPage() {
       {hasPermission(PERMISSIONS.ORGANIZATION_MANAGE) && <OrganizationCard />}
 
       <ConnectedAccountsCard />
+
+      {/* Phase 11 (API/integrations), slice 1 — same "ADMIN by default" gate as
+          ORGANIZATION_MANAGE above, not the OAuth-connection cards, which are ungated (personal,
+          per-user actions). */}
+      {hasPermission(PERMISSIONS.API_KEYS_MANAGE) && <ApiKeysCard />}
 
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><KeyRound className="h-4 w-4" /> Change Password</CardTitle></CardHeader>
@@ -317,6 +326,88 @@ function ConnectedAccountsCard() {
           </div>
         )}
       </CardContent>
+    </Card>
+  );
+}
+
+// Phase 11 (API/integrations), slice 1 — ADMIN-only by default. Every key is read-only (see
+// backend/src/db/schema.ts's apiKeys table comment); this card manages the credentials
+// themselves (create/revoke), not what they're used for.
+function ApiKeysCard() {
+  const { data: keys, isLoading } = useApiKeys();
+  const revokeApiKey = useRevokeApiKey();
+  const [formOpen, setFormOpen] = useState(false);
+  const [revokeTarget, setRevokeTarget] = useState<ApiKey | null>(null);
+
+  return (
+    <Card>
+      <CardHeader className="flex-row items-start justify-between gap-2 space-y-0">
+        <div>
+          <CardTitle className="flex items-center gap-2"><Code2 className="h-4 w-4" /> API Keys</CardTitle>
+          <CardDescription>Read-only credentials for external integrations — sent as an <code>X-Api-Key</code> header, never a login.</CardDescription>
+        </div>
+        <Button size="sm" onClick={() => setFormOpen(true)}><Plus /> New Key</Button>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <Skeleton className="h-24 rounded-xl" />
+        ) : !keys?.length ? (
+          <p className="text-sm text-muted-foreground">No API keys yet. Create one to let an external tool read data from this organization.</p>
+        ) : (
+          <div className="space-y-3">
+            {keys.map((k) => (
+              <div key={k.id} className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border/60 p-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium">{k.name}</p>
+                    {k.revokedAt ? (
+                      <Badge variant="outline" className="text-muted-foreground">Revoked</Badge>
+                    ) : (
+                      <Badge variant="outline" className="border-transparent bg-emerald-100 font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">Active</Badge>
+                    )}
+                  </div>
+                  <code className="text-xs text-muted-foreground">{k.keyPrefix}••••••••••••••••••••••••••••••••••••••••••••••••••••••</code>
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    {k.permissions.length ? k.permissions.map((p) => <Badge key={p} variant="secondary">{p}</Badge>) : (
+                      <span className="text-xs text-muted-foreground">No permissions granted</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Created {new Date(k.createdAt).toLocaleDateString()} · {k.lastUsedAt ? `Last used ${new Date(k.lastUsedAt).toLocaleDateString()}` : 'Never used'}
+                  </p>
+                </div>
+                {!k.revokedAt && (
+                  <Button variant="ghost" size="icon" onClick={() => setRevokeTarget(k)} aria-label={`Revoke ${k.name}`}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+
+      <ApiKeyFormDialog open={formOpen} onOpenChange={setFormOpen} />
+
+      <ConfirmDialog
+        open={!!revokeTarget}
+        onOpenChange={(o) => !o && setRevokeTarget(null)}
+        title={`Revoke "${revokeTarget?.name}"?`}
+        description="Any tool using this key will immediately lose access. This can't be undone — create a new key if you need one again."
+        destructive
+        confirmLabel="Revoke Key"
+        loading={revokeApiKey.isPending}
+        onConfirm={async () => {
+          if (!revokeTarget) return;
+          try {
+            await revokeApiKey.mutateAsync(revokeTarget.id);
+            toast.success('API key revoked');
+            setRevokeTarget(null);
+          } catch (err) {
+            toast.error(apiErrorMessage(err, 'Failed to revoke API key'));
+          }
+        }}
+      />
     </Card>
   );
 }

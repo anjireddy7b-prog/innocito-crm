@@ -1,6 +1,9 @@
 import { NextFunction, Request, Response } from 'express';
+import { eq } from 'drizzle-orm';
+import { db } from '@/config/db';
+import { apiKeys } from '@/db/schema';
 import { ApiError } from '@/utils/ApiError';
-import { verifyAccessToken, AccessTokenPayload } from '@/utils/tokens';
+import { verifyAccessToken, AccessTokenPayload, hashToken } from '@/utils/tokens';
 import { PermissionKey } from '@/utils/permissions';
 
 declare global {
@@ -12,8 +15,20 @@ declare global {
   }
 }
 
-/** Verifies the JWT access token from the Authorization header. */
-export function authenticate(req: Request, _res: Response, next: NextFunction) {
+/**
+ * Verifies the caller's identity from either the `X-Api-Key` header (Phase 11, slice 1) or the
+ * existing JWT `Authorization: Bearer` header, and populates `req.user` the same way either path
+ * — every downstream `requirePermission`/`orgId(req)` call works unmodified regardless of which
+ * one authenticated the request. See db/schema.ts's apiKeys table comment for why an API key can
+ * only ever authenticate a GET request: this is enforced right here, before any route handler
+ * runs, not left to each route to remember.
+ */
+export async function authenticate(req: Request, _res: Response, next: NextFunction) {
+  const apiKeyHeader = req.headers['x-api-key'];
+  if (typeof apiKeyHeader === 'string' && apiKeyHeader.length > 0) {
+    return authenticateApiKey(apiKeyHeader, req, next);
+  }
+
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) {
     return next(ApiError.unauthorized('Missing or malformed Authorization header'));
@@ -24,6 +39,34 @@ export function authenticate(req: Request, _res: Response, next: NextFunction) {
     next();
   } catch {
     next(ApiError.unauthorized('Invalid or expired access token'));
+  }
+}
+
+async function authenticateApiKey(rawKey: string, req: Request, next: NextFunction) {
+  try {
+    const keyHash = hashToken(rawKey);
+    const row = await db.query.apiKeys.findFirst({ where: eq(apiKeys.keyHash, keyHash) });
+    if (!row || row.revokedAt) {
+      return next(ApiError.unauthorized('Invalid or revoked API key'));
+    }
+    if (req.method !== 'GET') {
+      return next(ApiError.forbidden('API keys are read-only in this version — write requests require a user session'));
+    }
+    req.user = {
+      // Never a real users.id — every write path that treats req.user.sub as a foreign key is
+      // already unreachable here (the method check above), so this only ever flows into read-time
+      // filters, where a synthetic id that matches no row is harmless (see db/schema.ts).
+      sub: `api_key:${row.id}`,
+      email: '',
+      role: 'API_KEY',
+      permissions: row.permissions as string[],
+      organizationId: row.organizationId,
+    };
+    // Fire-and-forget — a failure to record last-used-at should never fail the actual request.
+    db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.id, row.id)).catch(() => {});
+    next();
+  } catch {
+    next(ApiError.unauthorized('Invalid API key'));
   }
 }
 

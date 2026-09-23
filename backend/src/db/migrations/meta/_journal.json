@@ -197,6 +197,13 @@
       "when": 1790180624190,
       "tag": "0027_dashboard_widgets",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1790183796871,
+      "tag": "0028_api_keys",
+      "breakpoints": true
     }
   ]
 }

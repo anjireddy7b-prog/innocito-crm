@@ -88,6 +88,13 @@ export const PERMISSIONS = {
 
   AUDIT_LOGS_VIEW: 'audit_logs:view',
   SETTINGS_MANAGE: 'settings:manage',
+
+  // Phase 11 (API/integrations), slice 1: create, view, and revoke API keys for external
+  // integrations. ADMIN-only by default, same "management" tier as
+  // CUSTOM_FIELDS_MANAGE/CUSTOM_OBJECTS_MANAGE/VALIDATION_RULES_MANAGE above. A key issued under
+  // this permission can only ever be granted read (GET) access — see db/schema.ts's apiKeys table
+  // comment for why writes aren't supported yet.
+  API_KEYS_MANAGE: 'api_keys:manage',
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -206,6 +213,7 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionKey, string> = {
   [PERMISSIONS.DASHBOARD_VIEW]: 'View the KPI dashboard',
   [PERMISSIONS.AUDIT_LOGS_VIEW]: 'View the security audit log',
   [PERMISSIONS.SETTINGS_MANAGE]: 'Manage system settings',
+  [PERMISSIONS.API_KEYS_MANAGE]: 'Create, view, and revoke API keys for external integrations (read-only access)',
 };
 
 /** Description seeded onto each organization's own copy of the 5 default roles. Editable

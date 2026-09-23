@@ -44,4 +44,7 @@ export const PERMISSIONS = {
 
   AUDIT_LOGS_VIEW: 'audit_logs:view',
   SETTINGS_MANAGE: 'settings:manage',
+
+  // Phase 11 (API/integrations), slice 1 — mirrors backend/src/utils/permissions.ts.
+  API_KEYS_MANAGE: 'api_keys:manage',
 } as const;
