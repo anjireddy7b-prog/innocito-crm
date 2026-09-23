@@ -95,6 +95,12 @@ export const PERMISSIONS = {
   // this permission can only ever be granted read (GET) access — see db/schema.ts's apiKeys table
   // comment for why writes aren't supported yet.
   API_KEYS_MANAGE: 'api_keys:manage',
+  // Phase 11 (API/integrations), slice 2: register/toggle/delete outbound webhook endpoints and
+  // view their delivery history. Same "ADMIN-only, infrastructure-adjacent" tier as
+  // API_KEYS_MANAGE just above — a webhook's URL and secret are exactly as sensitive as a key's
+  // credential, and configuring where this organization's data gets POSTed to is squarely an
+  // admin-level decision.
+  WEBHOOKS_MANAGE: 'webhooks:manage',
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -214,6 +220,7 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionKey, string> = {
   [PERMISSIONS.AUDIT_LOGS_VIEW]: 'View the security audit log',
   [PERMISSIONS.SETTINGS_MANAGE]: 'Manage system settings',
   [PERMISSIONS.API_KEYS_MANAGE]: 'Create, view, and revoke API keys for external integrations (read-only access)',
+  [PERMISSIONS.WEBHOOKS_MANAGE]: 'Register, pause/resume, and delete outbound webhook endpoints; view their delivery history',
 };
 
 /** Description seeded onto each organization's own copy of the 5 default roles. Editable

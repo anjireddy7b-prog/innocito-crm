@@ -54,6 +54,20 @@ const envSchema = z.object({
   SEQUENCE_SEND_WINDOW_START_HOUR: z.coerce.number().min(0).max(23).default(9),
   SEQUENCE_SEND_WINDOW_END_HOUR: z.coerce.number().min(1).max(24).default(18),
   SEQUENCE_SCHEDULER_INTERVAL_MINUTES: z.coerce.number().min(1).default(5),
+
+  // Phase 11 (API/integrations), slice 2 — outbound webhooks. Same in-process `setInterval`
+  // pattern as SEQUENCE_SCHEDULER_INTERVAL_MINUTES above (see webhookScheduler.ts), just on a much
+  // shorter cadence in SECONDS rather than minutes: a sequence step is fine landing within a few
+  // minutes of its due time, but a webhook is standing in for a near-real-time event notification,
+  // so deliveries should go out within seconds of the event, not minutes.
+  WEBHOOK_SCHEDULER_INTERVAL_SECONDS: z.coerce.number().min(1).default(15),
+  // How long a single delivery attempt waits for the receiving endpoint to respond before giving
+  // up and treating it as a failure (subject to the same retry/backoff as any other failure).
+  WEBHOOK_DELIVERY_TIMEOUT_MS: z.coerce.number().min(1000).default(10_000),
+  // Total attempts (the first try plus every retry) before a delivery is marked FAILED and the
+  // scheduler stops retrying it. See webhooks.service.ts's BACKOFF_MINUTES for the schedule
+  // between attempts.
+  WEBHOOK_MAX_ATTEMPTS: z.coerce.number().min(1).default(6),
 });
 
 const parsed = envSchema.safeParse(process.env);

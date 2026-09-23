@@ -32,6 +32,7 @@ import { sequencesRouter } from './sequences/sequences.routes';
 import { reportBuilderRouter } from './reportBuilder/reportBuilder.routes';
 import { dashboardWidgetsRouter } from './dashboardWidgets/dashboardWidgets.routes';
 import { apiKeysRouter } from './apiKeys/apiKeys.routes';
+import { webhooksRouter } from './webhooks/webhooks.routes';
 
 export const apiRouter = Router();
 
@@ -68,3 +69,4 @@ apiRouter.use('/sequences', sequencesRouter);
 apiRouter.use('/custom-reports', reportBuilderRouter);
 apiRouter.use('/dashboard-widgets', dashboardWidgetsRouter);
 apiRouter.use('/api-keys', apiKeysRouter);
+apiRouter.use('/webhooks', webhooksRouter);

@@ -3,6 +3,7 @@ import { env } from '@/config/env';
 import { logger } from '@/config/logger';
 import { pool } from '@/config/db';
 import { startSequenceScheduler, stopSequenceScheduler } from '@/modules/sequences/sequenceScheduler';
+import { startWebhookScheduler, stopWebhookScheduler } from '@/modules/webhooks/webhookScheduler';
 
 const app = createApp();
 
@@ -14,10 +15,12 @@ const server = app.listen(env.PORT, () => {
 // entrypoint), not in app.ts — app.ts is also what tests build via createApp(), and a test run
 // must never have a live timer sending real emails in the background.
 startSequenceScheduler();
+startWebhookScheduler();
 
 async function shutdown(signal: string) {
   logger.info(`${signal} received — shutting down gracefully`);
   stopSequenceScheduler();
+  stopWebhookScheduler();
   server.close(async () => {
     await pool.end();
     process.exit(0);

@@ -14,6 +14,8 @@ import { normalizeWebsite } from '@/utils/leadFormOptions';
 import { orgId } from '@/utils/tenant';
 import { validateAndNormalizeCustomFields } from '@/modules/customFields/customFields.service';
 import { enforceValidationRules } from '@/modules/validationRules/validationRules.service';
+import { dispatchWebhookEvent } from '@/modules/webhooks/webhooks.service';
+import { WEBHOOK_EVENTS } from '@/modules/webhooks/webhookEvents';
 
 /**
  * Combines a calendar date with an "HH:MM" time-of-day into one Date, the same "naive wall-clock,
@@ -326,6 +328,7 @@ export async function createLead(req: Request, input: any) {
     });
   }
   await recordAudit({ req, action: 'CREATE', entityType: 'Lead', entityId: created.id, newValues: created });
+  await dispatchWebhookEvent(org, WEBHOOK_EVENTS.LEAD_CREATED, { lead });
   await cache.del('dashboard:*');
 
   return lead;
@@ -459,6 +462,7 @@ export async function updateLead(req: Request, id: string, input: any) {
     userId: req.user!.sub,
   });
   await recordAudit({ req, action: 'UPDATE', entityType: 'Lead', entityId: id, oldValues: before, newValues: lead });
+  await dispatchWebhookEvent(org, WEBHOOK_EVENTS.LEAD_UPDATED, { lead });
   await cache.del('dashboard:*');
 
   return lead;
@@ -518,6 +522,11 @@ export async function assignLead(req: Request, id: string, input: { assignedToId
     entityId: id,
     oldValues: { assignedToId: before.assignedToId, currentOwnerId: before.currentOwnerId },
     newValues: { assignedToId: input.assignedToId, currentOwnerId: input.currentOwnerId },
+  });
+  await dispatchWebhookEvent(org, WEBHOOK_EVENTS.LEAD_ASSIGNED, {
+    lead,
+    previousAssignedToId: before.assignedToId,
+    previousCurrentOwnerId: before.currentOwnerId,
   });
   await cache.del('dashboard:*');
 
@@ -615,6 +624,7 @@ export async function changeLeadStatus(req: Request, id: string, input: { status
     oldValues: { status: before.status },
     newValues: { status: input.status },
   });
+  await dispatchWebhookEvent(org, WEBHOOK_EVENTS.LEAD_STATUS_CHANGED, { lead, from: before.status, to: input.status });
   await cache.del('dashboard:*');
 
   return lead;
@@ -626,5 +636,6 @@ export async function deleteLead(req: Request, id: string) {
   if (!before) throw ApiError.notFound('Lead not found');
   await db.update(leads).set({ isActive: false, updatedAt: new Date() }).where(eq(leads.id, id));
   await recordAudit({ req, action: 'DELETE', entityType: 'Lead', entityId: id, oldValues: before });
+  await dispatchWebhookEvent(org, WEBHOOK_EVENTS.LEAD_DELETED, { id, leadNumber: before.leadNumber });
   await cache.del('dashboard:*');
 }

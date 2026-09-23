@@ -1145,6 +1145,83 @@ export const apiKeys = pgTable(
 );
 
 // ----------------------------------------------------------------------------
+// Phase 11 — API/integrations, slice 2: outbound webhooks
+// ----------------------------------------------------------------------------
+// A tenant-registered URL that this app POSTs signed event payloads to (lead created, status
+// changed, etc. — see modules/webhooks/webhookEvents.ts for the fixed event-type catalog, kept as
+// a plain TS array validated by zod rather than a DB enum, same reasoning as apiKeys.permissions
+// just above: the catalog can grow without a migration).
+//
+// `secret` is intentionally stored and returned in **plaintext** — the opposite choice from
+// apiKeys.keyHash just above, and deliberately so: an API key's secret is a bearer credential (it
+// grants access *to us*), so it's hashed and shown exactly once. A webhook secret grants no access
+// to anything — it only lets the tenant's own receiving endpoint recompute the HMAC in
+// `X-Webhook-Signature` and confirm a delivery genuinely came from this app. Knowing it lets you
+// verify, not attack, so there's no reason to force a "copy it now or lose it forever" flow; a
+// tenant can come back to Settings and re-copy it into their receiver whenever they need to.
+//
+// `isActive` (not a revokedAt-style soft-delete) is the on/off switch — unlike an API key, a
+// webhook endpoint is expected to be paused and resumed routinely (a receiver under maintenance,
+// a noisy integration being debugged) without losing its URL/secret/event subscriptions, so this
+// gets a real toggle (PATCH /webhooks/:id, isActive only) rather than apiKeys' "revoke and reissue"
+// model. url/secret/eventTypes stay immutable after creation, same rationale as apiKeys' fields —
+// change the subscription, delete and recreate the endpoint.
+export const webhookEndpoints = pgTable(
+  'webhook_endpoints',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
+    url: varchar('url', { length: 2048 }).notNull(),
+    secret: varchar('secret', { length: 64 }).notNull(),
+    // Array of event-type strings from WEBHOOK_EVENTS (webhookEvents.ts) this endpoint is
+    // subscribed to. A jsonb array (not a join table) — same "fixed set, validated at the app
+    // layer" shape as apiKeys.permissions, since a webhook subscription list is exactly as
+        // static-per-record as a key's permission grant.
+    eventTypes: jsonb('event_types').notNull().default(sql`'[]'::jsonb`),
+    isActive: boolean('is_active').notNull().default(true),
+    createdById: uuid('created_by_id').references(() => users.id),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [index('webhook_endpoints_org_idx').on(t.organizationId)]
+);
+
+export const webhookDeliveryStatusEnum = pgEnum('webhook_delivery_status', ['PENDING', 'SUCCEEDED', 'FAILED']);
+
+// One row per (event, endpoint) delivery attempt-in-progress-or-settled — this is both the retry
+// queue (webhookScheduler.ts's tick scans for PENDING rows whose nextAttemptAt is due) AND the
+// delivery log a tenant can review in Settings to see whether their receiver is actually getting
+// events. Deliberately no new job-queue infrastructure (no BullMQ/SQS) — this table plus a plain
+// `setInterval` in webhookScheduler.ts is the exact same in-process pattern already signed off on
+// for modules/sequences/sequenceScheduler.ts, reused rather than re-decided.
+export const webhookDeliveries = pgTable(
+  'webhook_deliveries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
+    // Cascade: deleting the endpoint (there is no soft-delete for it) takes its delivery history
+    // with it — that history only ever meant anything in the context of an endpoint that still
+    // exists to receive events.
+    webhookEndpointId: uuid('webhook_endpoint_id').notNull().references(() => webhookEndpoints.id, { onDelete: 'cascade' }),
+    eventType: varchar('event_type', { length: 100 }).notNull(),
+    payload: jsonb('payload').notNull(),
+    status: webhookDeliveryStatusEnum('status').notNull().default('PENDING'),
+    attempts: integer('attempts').notNull().default(0),
+    nextAttemptAt: timestamp('next_attempt_at').notNull().defaultNow(),
+    lastAttemptAt: timestamp('last_attempt_at'),
+    lastStatusCode: integer('last_status_code'),
+    lastError: text('last_error'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('webhook_deliveries_org_idx').on(t.organizationId),
+    index('webhook_deliveries_endpoint_idx').on(t.webhookEndpointId),
+    // Powers the scheduler's own query: `WHERE status = 'PENDING' AND next_attempt_at <= now()`.
+    index('webhook_deliveries_due_idx').on(t.status, t.nextAttemptAt),
+  ]
+);
+
+// ----------------------------------------------------------------------------
 // Relations (powers Drizzle's relational query API: db.query.leads.findMany({with:{...}}))
 // ----------------------------------------------------------------------------
 export const organizationsRelations = relations(organizations, ({ many }) => ({
@@ -1163,11 +1240,23 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
   customReportDefinitions: many(customReportDefinitions),
   dashboardWidgets: many(dashboardWidgets),
   apiKeys: many(apiKeys),
+  webhookEndpoints: many(webhookEndpoints),
 }));
 
 export const apiKeysRelations = relations(apiKeys, ({ one }) => ({
   organization: one(organizations, { fields: [apiKeys.organizationId], references: [organizations.id] }),
   createdBy: one(users, { fields: [apiKeys.createdById], references: [users.id] }),
+}));
+
+export const webhookEndpointsRelations = relations(webhookEndpoints, ({ one, many }) => ({
+  organization: one(organizations, { fields: [webhookEndpoints.organizationId], references: [organizations.id] }),
+  createdBy: one(users, { fields: [webhookEndpoints.createdById], references: [users.id] }),
+  deliveries: many(webhookDeliveries),
+}));
+
+export const webhookDeliveriesRelations = relations(webhookDeliveries, ({ one }) => ({
+  organization: one(organizations, { fields: [webhookDeliveries.organizationId], references: [organizations.id] }),
+  webhookEndpoint: one(webhookEndpoints, { fields: [webhookDeliveries.webhookEndpointId], references: [webhookEndpoints.id] }),
 }));
 
 export const customFieldDefinitionsRelations = relations(customFieldDefinitions, ({ one }) => ({

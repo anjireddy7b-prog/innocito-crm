@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { useMutation } from '@tanstack/react-query';
-import { KeyRound, User, Shield, Building2, Mail, Send, Unlink, CalendarClock, RefreshCw, Plus, Trash2, Code2 } from 'lucide-react';
+import { KeyRound, User, Shield, Building2, Mail, Send, Unlink, CalendarClock, RefreshCw, Plus, Trash2, Code2, Webhook, Copy, Check, ChevronDown, ChevronUp } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -26,6 +26,15 @@ import {
 } from '@/api/integrations';
 import { useApiKeys, useRevokeApiKey, type ApiKey } from '@/api/apiKeys';
 import { ApiKeyFormDialog } from './settings/ApiKeyFormDialog';
+import {
+  useWebhookEndpoints,
+  useToggleWebhookEndpoint,
+  useDeleteWebhookEndpoint,
+  useWebhookDeliveries,
+  type WebhookEndpoint,
+} from '@/api/webhooks';
+import { WebhookFormDialog } from './settings/WebhookFormDialog';
+import { Switch } from '@/components/ui/switch';
 import { useAuthStore } from '@/store/authStore';
 import { PERMISSIONS } from '@/lib/permissions';
 import { apiErrorMessage } from '@/lib/api';
@@ -94,6 +103,10 @@ export default function SettingsPage() {
           ORGANIZATION_MANAGE above, not the OAuth-connection cards, which are ungated (personal,
           per-user actions). */}
       {hasPermission(PERMISSIONS.API_KEYS_MANAGE) && <ApiKeysCard />}
+
+      {/* Phase 11 (API/integrations), slice 2 — same "ADMIN by default" gate as API_KEYS_MANAGE
+          just above; see backend/src/utils/permissions.ts's WEBHOOKS_MANAGE comment. */}
+      {hasPermission(PERMISSIONS.WEBHOOKS_MANAGE) && <WebhooksCard />}
 
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><KeyRound className="h-4 w-4" /> Change Password</CardTitle></CardHeader>
@@ -409,5 +422,162 @@ function ApiKeysCard() {
         }}
       />
     </Card>
+  );
+}
+
+function WebhooksCard() {
+  const { data: endpoints, isLoading } = useWebhookEndpoints();
+  const toggleWebhook = useToggleWebhookEndpoint();
+  const deleteWebhook = useDeleteWebhookEndpoint();
+  const [formOpen, setFormOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<WebhookEndpoint | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  return (
+    <Card>
+      <CardHeader className="flex-row items-start justify-between gap-2 space-y-0">
+        <div>
+          <CardTitle className="flex items-center gap-2"><Webhook className="h-4 w-4" /> Webhooks</CardTitle>
+          <CardDescription>POST a signed payload to your own URL when leads are created, updated, assigned, or change status.</CardDescription>
+        </div>
+        <Button size="sm" onClick={() => setFormOpen(true)}><Plus /> New Endpoint</Button>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <Skeleton className="h-24 rounded-xl" />
+        ) : !endpoints?.length ? (
+          <p className="text-sm text-muted-foreground">No webhook endpoints yet. Add one to have this app notify your own system when something happens to a lead.</p>
+        ) : (
+          <div className="space-y-3">
+            {endpoints.map((endpoint) => (
+              <div key={endpoint.id} className="rounded-lg border border-border/60 p-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-sm font-medium">{endpoint.url}</p>
+                      {endpoint.isActive ? (
+                        <Badge variant="outline" className="border-transparent bg-emerald-100 font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">Active</Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-muted-foreground">Paused</Badge>
+                      )}
+                    </div>
+                    <WebhookSecret secret={endpoint.secret} />
+                    <div className="flex flex-wrap gap-1 pt-1">
+                      {endpoint.eventTypes.map((e) => <Badge key={e} variant="secondary"><code>{e}</code></Badge>)}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Created {new Date(endpoint.createdAt).toLocaleDateString()}</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Switch
+                      checked={endpoint.isActive}
+                      disabled={toggleWebhook.isPending}
+                      onCheckedChange={(checked) =>
+                        toggleWebhook.mutate(
+                          { id: endpoint.id, isActive: checked },
+                          { onError: (err) => toast.error(apiErrorMessage(err, 'Failed to update webhook endpoint')) }
+                        )
+                      }
+                      aria-label={endpoint.isActive ? `Pause ${endpoint.url}` : `Resume ${endpoint.url}`}
+                    />
+                    <Button variant="ghost" size="icon" onClick={() => setExpandedId(expandedId === endpoint.id ? null : endpoint.id)} aria-label="Toggle delivery history">
+                      {expandedId === endpoint.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(endpoint)} aria-label={`Delete ${endpoint.url}`}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                {expandedId === endpoint.id && <WebhookDeliveriesList endpointId={endpoint.id} />}
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+
+      <WebhookFormDialog open={formOpen} onOpenChange={setFormOpen} />
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => !o && setDeleteTarget(null)}
+        title="Delete this webhook endpoint?"
+        description="Its delivery history is deleted along with it. Any tool relying on these notifications will stop receiving them immediately. This can't be undone."
+        destructive
+        confirmLabel="Delete Endpoint"
+        loading={deleteWebhook.isPending}
+        onConfirm={async () => {
+          if (!deleteTarget) return;
+          try {
+            await deleteWebhook.mutateAsync(deleteTarget.id);
+            toast.success('Webhook endpoint deleted');
+            setDeleteTarget(null);
+          } catch (err) {
+            toast.error(apiErrorMessage(err, 'Failed to delete webhook endpoint'));
+          }
+        }}
+      />
+    </Card>
+  );
+}
+
+/** Not a one-time reveal (see api/webhooks.ts) — just a copyable field, same treatment as any
+ * other endpoint detail. */
+function WebhookSecret({ secret }: { secret: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(secret);
+      setCopied(true);
+      toast.success('Signing secret copied');
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Couldn't copy — select and copy the secret manually");
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <code className="text-xs text-muted-foreground">{secret}</code>
+      <Button type="button" variant="ghost" size="icon" className="h-5 w-5" onClick={handleCopy} aria-label="Copy signing secret">
+        {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+      </Button>
+    </div>
+  );
+}
+
+function WebhookDeliveriesList({ endpointId }: { endpointId: string }) {
+  const { data: deliveries, isLoading } = useWebhookDeliveries(endpointId);
+
+  const statusBadge = (status: string) => {
+    if (status === 'SUCCEEDED') return <Badge variant="outline" className="border-transparent bg-emerald-100 font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">Succeeded</Badge>;
+    if (status === 'FAILED') return <Badge variant="outline" className="border-transparent bg-red-100 font-medium text-red-700 dark:bg-red-900/40 dark:text-red-300">Failed</Badge>;
+    return <Badge variant="outline" className="border-transparent bg-amber-100 font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">Pending retry</Badge>;
+  };
+
+  return (
+    <div className="mt-3 border-t border-border/60 pt-3">
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Recent deliveries</p>
+      {isLoading ? (
+        <Skeleton className="h-12 rounded-lg" />
+      ) : !deliveries?.length ? (
+        <p className="text-xs text-muted-foreground">No deliveries yet — they'll show up here the next time a subscribed event happens.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {deliveries.map((d) => (
+            <div key={d.id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2">
+                <code>{d.eventType}</code>
+                {statusBadge(d.status)}
+                <span className="text-muted-foreground">
+                  {d.attempts} attempt{d.attempts === 1 ? '' : 's'}
+                  {d.lastStatusCode ? ` · HTTP ${d.lastStatusCode}` : ''}
+                </span>
+              </div>
+              <span className="text-muted-foreground">{new Date(d.createdAt).toLocaleString()}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
