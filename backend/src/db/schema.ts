@@ -1006,6 +1006,59 @@ export const auditLogs = pgTable(
 );
 
 // ----------------------------------------------------------------------------
+// Phase 10 — reporting/dashboard builder, slice 1: custom report builder
+// ----------------------------------------------------------------------------
+// A saved report definition: pick a groupBy dimension + a metric, optionally filter the leads
+// considered, and pick a chart type to render the result as. Deliberately LEAD-only for now
+// (entityType stays a plain string, not hardcoded, for the same reason customFieldDefinitions/
+// savedViews/validationRules keep it a column rather than a literal — a future entity can adopt
+// this without a schema change). Ownership/sharing model copied exactly from savedViews (Phase 7):
+// personal by default, visible only to its creator; isShared makes it organization-wide, gated on
+// REPORTS_MANAGE_SHARED to create/edit/delete (same "management tier" as SAVED_VIEWS_MANAGE_SHARED)
+// — see reportBuilder.service.ts.
+//
+// groupBy/metric/chartType are plain validated strings (not pgEnums) — see
+// reportBuilder.validation.ts for the fixed option lists enforced at the API boundary. Kept as
+// strings rather than enums so adding a new dimension/metric/chart type later is a validation-file
+// change, not a migration, matching this codebase's existing "config-shaped" jsonb/varchar columns
+// (customFieldDefinitions.fieldType is the one exception that predates this precedent).
+//
+// `filters` is a small structured jsonb bag (status/priority/source/campaignId/assignedToId/
+// ownerId/dateField/dateFrom/dateTo/includeInactive) rather than an open-ended query builder —
+// every field it can filter on is a single value, mirroring how LeadsListPage's own filter bar
+// (and thus savedViews.filters) is single-value-per-field, not multi-select. Company-level
+// dimensions (country/industry) are only ever a groupBy choice, not also a filter, to avoid needing
+// an unconditional join to `companies` on every run — a deliberate, documented scope cut for this
+// slice.
+export const customReportDefinitions = pgTable(
+  'custom_report_definitions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
+    entityType: varchar('entity_type', { length: 50 }).notNull().default('LEAD'),
+    name: varchar('name', { length: 150 }).notNull(),
+    description: text('description'),
+    groupBy: varchar('group_by', { length: 50 }).notNull(),
+    metric: varchar('metric', { length: 50 }).notNull().default('COUNT'),
+    chartType: varchar('chart_type', { length: 20 }).notNull().default('BAR'),
+    filters: jsonb('filters').notNull().default(sql`'{}'::jsonb`),
+    isShared: boolean('is_shared').notNull().default(false),
+    createdById: uuid('created_by_id').references(() => users.id),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('custom_report_definitions_org_entity_idx').on(t.organizationId, t.entityType),
+    uniqueIndex('custom_report_definitions_org_entity_creator_name_unique').on(
+      t.organizationId,
+      t.entityType,
+      t.createdById,
+      t.name
+    ),
+  ]
+);
+
+// ----------------------------------------------------------------------------
 // Relations (powers Drizzle's relational query API: db.query.leads.findMany({with:{...}}))
 // ----------------------------------------------------------------------------
 export const organizationsRelations = relations(organizations, ({ many }) => ({
@@ -1021,6 +1074,7 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
   customObjectRecords: many(customObjectRecords),
   savedViews: many(savedViews),
   validationRules: many(validationRules),
+  customReportDefinitions: many(customReportDefinitions),
 }));
 
 export const customFieldDefinitionsRelations = relations(customFieldDefinitions, ({ one }) => ({
@@ -1049,6 +1103,11 @@ export const savedViewsRelations = relations(savedViews, ({ one }) => ({
 
 export const validationRulesRelations = relations(validationRules, ({ one }) => ({
   organization: one(organizations, { fields: [validationRules.organizationId], references: [organizations.id] }),
+}));
+
+export const customReportDefinitionsRelations = relations(customReportDefinitions, ({ one }) => ({
+  organization: one(organizations, { fields: [customReportDefinitions.organizationId], references: [organizations.id] }),
+  createdBy: one(users, { fields: [customReportDefinitions.createdById], references: [users.id] }),
 }));
 
 export const casesRelations = relations(cases, ({ one, many }) => ({

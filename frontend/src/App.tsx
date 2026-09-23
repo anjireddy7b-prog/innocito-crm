@@ -29,6 +29,7 @@ const TasksPage = lazy(() => import('@/pages/TasksPage'));
 const DocumentsPage = lazy(() => import('@/pages/DocumentsPage'));
 const ActivitiesPage = lazy(() => import('@/pages/ActivitiesPage'));
 const ReportsPage = lazy(() => import('@/pages/ReportsPage'));
+const CustomReportsPage = lazy(() => import('@/pages/reports/CustomReportsPage'));
 const UsersPage = lazy(() => import('@/pages/UsersPage'));
 const RolesPage = lazy(() => import('@/pages/roles/RolesPage'));
 const CustomizationPage = lazy(() => import('@/pages/customization/CustomizationPage'));
@@ -114,6 +115,20 @@ export default function App() {
             element={
               <RequirePermission permission={PERMISSIONS.REPORTS_VIEW}>
                 <ReportsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/custom-reports"
+            element={
+              // Phase 10 (reporting/dashboard builder), slice 1 — same base permission as /reports
+              // itself; ownership/shared-management checks for individual reports live on the page.
+              // Deliberately NOT nested under /reports/* — Sidebar.tsx's isPathActive matches any
+              // path one segment below a nav item's `to` as also "active" for that item (it's built
+              // for detail pages like /sequences/:id), so /reports/custom would incorrectly also
+              // highlight the "Reports" nav item as active.
+              <RequirePermission permission={PERMISSIONS.REPORTS_VIEW}>
+                <CustomReportsPage />
               </RequirePermission>
             }
           />

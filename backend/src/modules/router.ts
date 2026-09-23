@@ -29,6 +29,7 @@ import { searchRouter } from './search/search.routes';
 import { reportsRouter } from './reports/reports.routes';
 import { integrationsRouter } from './integrations/integrations.routes';
 import { sequencesRouter } from './sequences/sequences.routes';
+import { reportBuilderRouter } from './reportBuilder/reportBuilder.routes';
 
 export const apiRouter = Router();
 
@@ -62,3 +63,4 @@ apiRouter.use('/search', searchRouter);
 apiRouter.use('/reports', reportsRouter);
 apiRouter.use('/integrations', integrationsRouter);
 apiRouter.use('/sequences', sequencesRouter);
+apiRouter.use('/custom-reports', reportBuilderRouter);

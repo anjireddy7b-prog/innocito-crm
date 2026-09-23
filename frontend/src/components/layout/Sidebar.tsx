@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Target, Building2, Users, Megaphone, Activity, CalendarClock, ListChecks,
   FileText, BarChart3, UserCog, ShieldCheck, KeyRound, Settings, ChevronLeft, ChevronRight,
-  SlidersHorizontal, Box, GitMerge, LifeBuoy, BookOpen, Send,
+  SlidersHorizontal, Box, GitMerge, LifeBuoy, BookOpen, Send, PieChart,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useUIStore } from '@/store/uiStore';
@@ -48,6 +48,10 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Documents', to: '/documents', icon: FileText },
   { label: 'Activity Feed', to: '/activities', icon: Activity },
   { label: 'Reports', to: '/reports', icon: BarChart3, permission: PERMISSIONS.REPORTS_VIEW },
+  // Phase 10 (reporting/dashboard builder), slice 1 — same base permission as Reports itself;
+  // individual reports' ownership/shared-management checks live on the page (see
+  // CustomReportsPage.tsx / reportBuilder.service.ts).
+  { label: 'Custom Reports', to: '/custom-reports', icon: PieChart, permission: PERMISSIONS.REPORTS_VIEW },
   // Phase 3: was a hardcoded roles: ['ADMIN'] gate — USERS_MANAGE is granted to ADMIN by default
   // (see backend/src/utils/permissions.ts), so this is a zero-behavior-change swap that also now
   // shows this item to any custom role granted the same permission.

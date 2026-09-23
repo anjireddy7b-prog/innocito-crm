@@ -17,6 +17,9 @@ export const PERMISSIONS = {
   // copy authored for enrolling leads, not org-wide reference material. Granted by default only
   // to INSIDE_SALES and SALES (see backend/src/utils/permissions.ts).
   SEQUENCES_MANAGE: 'sequences:manage',
+  // Phase 10 (reporting/dashboard builder), slice 1 — see backend/src/utils/permissions.ts's
+  // own comment for the full rationale (same "management tier" as SAVED_VIEWS_MANAGE_SHARED).
+  REPORTS_MANAGE_SHARED: 'reports:manage_shared',
 
   LEADS_CREATE: 'leads:create',
   LEADS_VIEW: 'leads:view',

@@ -58,6 +58,12 @@ export const PERMISSIONS = {
   // enrolling leads, not organization-wide reference material, so viewing sits behind the same
   // permission as managing (see sequences.routes.ts).
   SEQUENCES_MANAGE: 'sequences:manage',
+  // Phase 10 (reporting/dashboard builder), slice 1: create, edit, or delete a custom report
+  // definition marked shared (organization-wide, not just its creator) — see db/schema.ts's
+  // customReportDefinitions table comment. Exactly the same "management" tier as
+  // SAVED_VIEWS_MANAGE_SHARED above, and by the same logic: anyone holding REPORTS_VIEW can
+  // always create/edit/delete their OWN personal (non-shared) report definitions without this.
+  REPORTS_MANAGE_SHARED: 'reports:manage_shared',
 
   LEADS_CREATE: 'leads:create',
   LEADS_VIEW: 'leads:view',
@@ -152,6 +158,9 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     PERMISSIONS.REPORTS_EXPORT,
     PERMISSIONS.AUDIT_LOGS_VIEW,
     PERMISSIONS.SAVED_VIEWS_MANAGE_SHARED,
+    // Phase 10, slice 1: MANAGEMENT is the cross-team reporting/analytics role (see its
+    // description below) — same rationale as it already holding SAVED_VIEWS_MANAGE_SHARED.
+    PERMISSIONS.REPORTS_MANAGE_SHARED,
   ],
 };
 
@@ -193,6 +202,7 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionKey, string> = {
   [PERMISSIONS.COMMENTS_CREATE]: 'Add comments to leads',
   [PERMISSIONS.REPORTS_VIEW]: 'View reports',
   [PERMISSIONS.REPORTS_EXPORT]: 'Export reports to CSV/Excel/PDF',
+  [PERMISSIONS.REPORTS_MANAGE_SHARED]: 'Create, edit, and delete shared (organization-wide) custom report definitions',
   [PERMISSIONS.DASHBOARD_VIEW]: 'View the KPI dashboard',
   [PERMISSIONS.AUDIT_LOGS_VIEW]: 'View the security audit log',
   [PERMISSIONS.SETTINGS_MANAGE]: 'Manage system settings',
