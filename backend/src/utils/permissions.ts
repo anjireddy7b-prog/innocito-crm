@@ -35,6 +35,12 @@ export const PERMISSIONS = {
   // always create/edit/delete their OWN personal (non-shared) views without this; this is only
   // for the org-wide ones, same "management" tier as REPORTS_EXPORT/AUDIT_LOGS_VIEW below.
   SAVED_VIEWS_MANAGE_SHARED: 'saved_views:manage_shared',
+  // Phase 8: create/edit/delete tenant-defined validation rules on leads. ADMIN-only by default,
+  // same precedent as CUSTOM_FIELDS_MANAGE/PIPELINE_STAGES_MANAGE/CUSTOM_OBJECTS_MANAGE — a rule
+  // is pure server-side enforcement with no client-rendering audience to carve a separate "view"
+  // permission out for (unlike custom fields, which every lead viewer needs the list of to render
+  // the form).
+  VALIDATION_RULES_MANAGE: 'validation_rules:manage',
 
   LEADS_CREATE: 'leads:create',
   LEADS_VIEW: 'leads:view',
@@ -134,6 +140,7 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionKey, string> = {
   [PERMISSIONS.PIPELINE_STAGES_MANAGE]: 'Rename, reorder, and edit pipeline stage flags',
   [PERMISSIONS.CUSTOM_OBJECTS_MANAGE]: 'Create, edit, and delete custom object types and their records',
   [PERMISSIONS.SAVED_VIEWS_MANAGE_SHARED]: 'Create, edit, and delete shared (organization-wide) saved views',
+  [PERMISSIONS.VALIDATION_RULES_MANAGE]: 'Create, edit, and delete validation rules on leads',
   [PERMISSIONS.LEADS_CREATE]: 'Create new leads',
   [PERMISSIONS.LEADS_VIEW]: 'View leads',
   [PERMISSIONS.LEADS_EDIT_OWN]: 'Edit leads you are assigned to / own / created',

@@ -431,6 +431,53 @@ export const savedViews = pgTable(
   ]
 );
 
+// ----------------------------------------------------------------------------
+// Process engines, part 1 (Phase 8) — validation rules
+// ----------------------------------------------------------------------------
+// Section H groups "workflow / approval / validation-rule / notification engines" as one
+// net-new subsystem needing a job queue (Redis gains a queue role, e.g. BullMQ) and
+// feature-flag-gated rollout. This phase deliberately implements only the validation-rule slice,
+// synchronously, with NO queue — see the Architecture Report's Phase 8 completion section for why
+// true async workflow automation and approvals (which genuinely need that queue/notification
+// infrastructure) are deferred: introducing a background-job worker is a materially larger,
+// riskier undertaking on this app's current single-service Railway deployment than this phase's
+// own budget, the same class of judgment call Phase 6 made about the built-in Lead form.
+//
+// A rule is "when <field> <operator> [value], then <fields> are required" — evaluated
+// synchronously against a lead's fully-merged field values (typed columns plus its `customFields`
+// bag) on every create/update, before the row is written (see leads.service.ts and
+// validationRules.service.ts's enforceValidationRules). `entityType` is LEAD-only for now, same
+// LEAD-only-first precedent as customFieldDefinitions/savedViews.
+export const validationRules = pgTable(
+  'validation_rules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
+    entityType: varchar('entity_type', { length: 50 }).notNull().default('LEAD'),
+    name: varchar('name', { length: 150 }).notNull(),
+    description: text('description'),
+    isActive: boolean('is_active').notNull().default(true),
+    // A typed Lead column name (e.g. "status", "dealValue") or a custom field key — resolved
+    // generically at evaluation time (see validationRules.service.ts's getFieldValue), not
+    // constrained to a fixed enum here, so a rule can reference either without a schema change.
+    whenField: varchar('when_field', { length: 100 }).notNull(),
+    whenOperator: varchar('when_operator', { length: 20 }).notNull(),
+    // Required for 'equals'/'not_equals', unused (and left null) for 'is_set'/'is_not_set' — see
+    // validationRules.validation.ts's superRefine.
+    whenValue: varchar('when_value', { length: 255 }),
+    // string[] of field keys that must be non-empty when the condition matches.
+    thenRequireFields: jsonb('then_require_fields').notNull().default(sql`'[]'::jsonb`),
+    errorMessage: varchar('error_message', { length: 500 }),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('validation_rules_org_entity_idx').on(t.organizationId, t.entityType),
+    uniqueIndex('validation_rules_org_entity_name_unique').on(t.organizationId, t.entityType, t.name),
+  ]
+);
+
 export const leads = pgTable(
   'leads',
   {
@@ -692,6 +739,7 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
   customObjectDefinitions: many(customObjectDefinitions),
   customObjectRecords: many(customObjectRecords),
   savedViews: many(savedViews),
+  validationRules: many(validationRules),
 }));
 
 export const customFieldDefinitionsRelations = relations(customFieldDefinitions, ({ one }) => ({
@@ -716,6 +764,10 @@ export const customObjectRecordsRelations = relations(customObjectRecords, ({ on
 export const savedViewsRelations = relations(savedViews, ({ one }) => ({
   organization: one(organizations, { fields: [savedViews.organizationId], references: [organizations.id] }),
   createdBy: one(users, { fields: [savedViews.createdById], references: [users.id] }),
+}));
+
+export const validationRulesRelations = relations(validationRules, ({ one }) => ({
+  organization: one(organizations, { fields: [validationRules.organizationId], references: [organizations.id] }),
 }));
 
 export const rolesRelations = relations(roles, ({ one, many }) => ({

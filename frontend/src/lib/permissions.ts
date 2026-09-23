@@ -9,6 +9,7 @@ export const PERMISSIONS = {
   PIPELINE_STAGES_MANAGE: 'pipeline_stages:manage',
   CUSTOM_OBJECTS_MANAGE: 'custom_objects:manage',
   SAVED_VIEWS_MANAGE_SHARED: 'saved_views:manage_shared',
+  VALIDATION_RULES_MANAGE: 'validation_rules:manage',
 
   LEADS_CREATE: 'leads:create',
   LEADS_VIEW: 'leads:view',

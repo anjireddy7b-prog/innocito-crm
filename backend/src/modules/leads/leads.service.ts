@@ -13,6 +13,7 @@ import { PERMISSIONS } from '@/utils/permissions';
 import { normalizeWebsite } from '@/utils/leadFormOptions';
 import { orgId } from '@/utils/tenant';
 import { validateAndNormalizeCustomFields } from '@/modules/customFields/customFields.service';
+import { enforceValidationRules } from '@/modules/validationRules/validationRules.service';
 
 /**
  * Combines a calendar date with an "HH:MM" time-of-day into one Date, the same "naive wall-clock,
@@ -23,6 +24,20 @@ import { validateAndNormalizeCustomFields } from '@/modules/customFields/customF
 function combineDateAndTime(date: Date, time?: string | null): Date {
   const [hh, mm] = (time ?? '00:00').split(':').map(Number);
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), hh || 0, mm || 0));
+}
+
+// Phase 8: builds the "effective" field snapshot a validation rule evaluates against on update —
+// `base` (the lead row as it exists today) with `overrides` (this request's own `.set()` object)
+// layered on top, skipping any override key whose value is `undefined` so an omitted field in a
+// partial update reads as "keep the existing value," not "clear it." Mirrors exactly how
+// drizzle's own `.update().set()` already treats an undefined-valued key (see the `set` call just
+// below updateLead's own use of this).
+function mergeDefined(base: Record<string, unknown>, overrides: Record<string, unknown>): Record<string, unknown> {
+  const merged = { ...base };
+  for (const [key, value] of Object.entries(overrides)) {
+    if (value !== undefined) merged[key] = value;
+  }
+  return merged;
 }
 
 const leadWith = {
@@ -226,35 +241,39 @@ export async function createLead(req: Request, input: any) {
   // silently skipped just because the caller never mentioned it.
   const customFields = await validateAndNormalizeCustomFields(org, 'LEAD', input.customFields);
 
-  const [created] = await db
-    .insert(leads)
-    .values({
-      organizationId: org,
-      companyId,
-      contactId,
-      campaignId: input.campaignId ?? null,
-      source: input.source,
-      status: input.status,
-      priority: input.priority,
-      category: input.category,
-      dealValue: input.dealValue?.toString(),
-      currency: input.currency ?? 'USD',
-      probability: input.probability,
-      expectedCloseDate: input.expectedCloseDate,
-      tags: input.tags ?? [],
-      customFields,
-      assignedToId: input.assignedToId,
-      currentOwnerId: input.currentOwnerId,
-      sdrId: input.sdrId,
-      createdBySdrId: input.createdBySdrId,
-      leadReceivedDate: input.leadReceivedDate ?? undefined, // defaults to now() at the DB layer when omitted
-      meetingDetails: input.meetingDetails,
-      emailResponse: input.emailResponse,
-      mom: input.mom,
-      nextSteps: input.nextSteps,
-      createdById: req.user!.sub,
-    })
-    .returning();
+  const values = {
+    organizationId: org,
+    companyId,
+    contactId,
+    campaignId: input.campaignId ?? null,
+    source: input.source,
+    status: input.status,
+    priority: input.priority,
+    category: input.category,
+    dealValue: input.dealValue?.toString(),
+    currency: input.currency ?? 'USD',
+    probability: input.probability,
+    expectedCloseDate: input.expectedCloseDate,
+    tags: input.tags ?? [],
+    customFields,
+    assignedToId: input.assignedToId,
+    currentOwnerId: input.currentOwnerId,
+    sdrId: input.sdrId,
+    createdBySdrId: input.createdBySdrId,
+    leadReceivedDate: input.leadReceivedDate ?? undefined, // defaults to now() at the DB layer when omitted
+    meetingDetails: input.meetingDetails,
+    emailResponse: input.emailResponse,
+    mom: input.mom,
+    nextSteps: input.nextSteps,
+    createdById: req.user!.sub,
+  };
+
+  // Phase 8: evaluated against the exact same field values about to be written — dealValue is
+  // still the raw number here (not yet .toString()'d), which is fine, since rule comparisons
+  // just String()-coerce whatever they're given anyway (see validationRules.service.ts).
+  await enforceValidationRules(org, 'LEAD', values);
+
+  const [created] = await db.insert(leads).values(values).returning();
 
   // Optional meeting captured directly on the Lead Creation form — mirrors the meeting-creation
   // behavior the CSV import already has (see leads.import.service.ts) so both entry paths agree.
@@ -329,36 +348,42 @@ export async function updateLead(req: Request, id: string, input: any) {
   const customFields =
     input.customFields !== undefined ? await validateAndNormalizeCustomFields(org, 'LEAD', input.customFields) : undefined;
 
-  await db
-    .update(leads)
-    .set({
-      ...(companyId !== undefined ? { companyId } : {}),
-      ...(contactId !== undefined ? { contactId } : {}),
-      ...(input.campaignId !== undefined ? { campaignId: input.campaignId } : {}),
-      source: input.source,
-      priority: input.priority,
-      category: input.category,
-      dealValue: input.dealValue !== undefined ? input.dealValue?.toString() : undefined,
-      currency: input.currency,
-      probability: input.probability,
-      expectedCloseDate: input.expectedCloseDate,
-      actualCloseDate: input.actualCloseDate,
-      lossReason: input.lossReason,
-      tags: input.tags,
-      ...(customFields !== undefined ? { customFields } : {}),
-      // Note: assignedToId/currentOwnerId are intentionally NOT settable here — they go through
-      // assignLead() below, which fires its own notification/audit trail. sdrId has no equivalent
-      // dedicated endpoint (yet), so it's safe to fold into the general update.
-      ...(input.sdrId !== undefined ? { sdrId: input.sdrId } : {}),
-      ...(input.createdBySdrId !== undefined ? { createdBySdrId: input.createdBySdrId } : {}),
-      ...(input.leadReceivedDate !== undefined ? { leadReceivedDate: input.leadReceivedDate } : {}),
-      meetingDetails: input.meetingDetails,
-      emailResponse: input.emailResponse,
-      mom: input.mom,
-      nextSteps: input.nextSteps,
-      updatedAt: new Date(),
-    })
-    .where(eq(leads.id, id));
+  const updates = {
+    ...(companyId !== undefined ? { companyId } : {}),
+    ...(contactId !== undefined ? { contactId } : {}),
+    ...(input.campaignId !== undefined ? { campaignId: input.campaignId } : {}),
+    source: input.source,
+    priority: input.priority,
+    category: input.category,
+    dealValue: input.dealValue !== undefined ? input.dealValue?.toString() : undefined,
+    currency: input.currency,
+    probability: input.probability,
+    expectedCloseDate: input.expectedCloseDate,
+    actualCloseDate: input.actualCloseDate,
+    lossReason: input.lossReason,
+    tags: input.tags,
+    ...(customFields !== undefined ? { customFields } : {}),
+    // Note: assignedToId/currentOwnerId are intentionally NOT settable here — they go through
+    // assignLead() below, which fires its own notification/audit trail. sdrId has no equivalent
+    // dedicated endpoint (yet), so it's safe to fold into the general update.
+    ...(input.sdrId !== undefined ? { sdrId: input.sdrId } : {}),
+    ...(input.createdBySdrId !== undefined ? { createdBySdrId: input.createdBySdrId } : {}),
+    ...(input.leadReceivedDate !== undefined ? { leadReceivedDate: input.leadReceivedDate } : {}),
+    meetingDetails: input.meetingDetails,
+    emailResponse: input.emailResponse,
+    mom: input.mom,
+    nextSteps: input.nextSteps,
+    updatedAt: new Date(),
+  };
+
+  // Phase 8: `before` merged with only this request's actually-changed fields — status, for
+  // instance, isn't part of `updates` at all (it only ever changes via changeLeadStatus below),
+  // so a rule keyed on status still evaluates against the lead's current (pre-this-request)
+  // status here, which is exactly right.
+  const effective = mergeDefined(before, updates);
+  await enforceValidationRules(org, 'LEAD', effective);
+
+  await db.update(leads).set(updates).where(eq(leads.id, id));
 
   // Unlike lead-creation time (where inline `company` details only ever apply to a brand-new
   // company, to protect a shared record from being clobbered by a guess), the Edit Lead form shows
@@ -545,15 +570,20 @@ export async function changeLeadStatus(req: Request, id: string, input: { status
   if (!canEditLead(req, before)) throw ApiError.forbidden('You do not have permission to edit this lead');
 
   const isTerminal = ['WON', 'LOST', 'DISQUALIFIED'].includes(input.status);
-  await db
-    .update(leads)
-    .set({
-      status: input.status as any,
-      lossReason: input.status === 'LOST' ? input.lossReason : undefined,
-      actualCloseDate: isTerminal ? new Date() : undefined,
-      updatedAt: new Date(),
-    })
-    .where(eq(leads.id, id));
+  const statusUpdates = {
+    status: input.status as any,
+    lossReason: input.status === 'LOST' ? input.lossReason : undefined,
+    actualCloseDate: isTerminal ? new Date() : undefined,
+    updatedAt: new Date(),
+  };
+
+  // Phase 8: a status transition is exactly the kind of change a validation rule keyed on
+  // `status` (e.g. "when status = WON, require dealValue") exists to catch — this endpoint is a
+  // separate mutation path from updateLead above, so it needs its own enforcement call rather
+  // than relying on updateLead's.
+  await enforceValidationRules(org, 'LEAD', mergeDefined(before, statusUpdates));
+
+  await db.update(leads).set(statusUpdates).where(eq(leads.id, id));
 
   const lead = await getLeadById(org, id);
 
