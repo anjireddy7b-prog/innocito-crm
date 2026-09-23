@@ -63,6 +63,11 @@ export const customFieldTypeEnum = pgEnum('custom_field_type', [
 // taskPriorityEnum vs leadPriorityEnum (URGENT vs CRITICAL) below. See modules/cases/cases.service.ts.
 export const caseStatusEnum = pgEnum('case_status', ['NEW', 'OPEN', 'PENDING', 'ON_HOLD', 'RESOLVED', 'CLOSED']);
 export const casePriorityEnum = pgEnum('case_priority', ['LOW', 'MEDIUM', 'HIGH', 'URGENT']);
+// Phase 9 ("advanced CRM" slice) — knowledge base. DRAFT articles are only visible to
+// KNOWLEDGE_BASE_MANAGE holders (see that permission's comment in utils/permissions.ts);
+// PUBLISHED ones are visible to any authenticated org member. See modules/knowledgeBase/
+// knowledgeBase.service.ts.
+export const knowledgeArticleStatusEnum = pgEnum('knowledge_article_status', ['DRAFT', 'PUBLISHED']);
 
 // ----------------------------------------------------------------------------
 // Multi-tenancy
@@ -631,6 +636,40 @@ export const caseComments = pgTable(
 );
 
 // ----------------------------------------------------------------------------
+// Phase 9 ("advanced CRM" slice) — knowledge base
+// ----------------------------------------------------------------------------
+// Internal reference articles (FAQ/how-to/policy content) for reps, independent of any other
+// entity — deliberately NOT linked to Cases/Companies/etc. in this increment (an article is
+// general reference material, not tied to one case's lifecycle; linking is a documented, deferred
+// enhancement, not a gap). `category` is a curated-but-free-text string, same precedent as
+// companies.industry — a fixed dropdown in the UI, never DB-constrained, so an article authored
+// before a category existed in the curated list can still be re-saved without being forced into
+// one. `tags` mirrors leads.tags exactly (text[], default '{}').
+export const knowledgeArticles = pgTable(
+  'knowledge_articles',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
+    title: varchar('title', { length: 255 }).notNull(),
+    category: varchar('category', { length: 150 }),
+    tags: text('tags').array().notNull().default(sql`'{}'::text[]`),
+    content: text('content').notNull(),
+    status: knowledgeArticleStatusEnum('status').notNull().default('DRAFT'),
+    createdById: uuid('created_by_id').references(() => users.id),
+    // Set automatically the moment `status` transitions into PUBLISHED, cleared if reverted to
+    // DRAFT — never accepted directly from a request body (mirrors cases.resolvedAt/closedAt).
+    publishedAt: timestamp('published_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('knowledge_articles_org_idx').on(t.organizationId),
+    index('knowledge_articles_org_status_idx').on(t.organizationId, t.status),
+    index('knowledge_articles_org_category_idx').on(t.organizationId, t.category),
+  ]
+);
+
+// ----------------------------------------------------------------------------
 // Engagement entities
 // ----------------------------------------------------------------------------
 export const meetings = pgTable(
@@ -853,6 +892,11 @@ export const casesRelations = relations(cases, ({ one, many }) => ({
 export const caseCommentsRelations = relations(caseComments, ({ one }) => ({
   case: one(cases, { fields: [caseComments.caseId], references: [cases.id] }),
   user: one(users, { fields: [caseComments.userId], references: [users.id] }),
+}));
+
+export const knowledgeArticlesRelations = relations(knowledgeArticles, ({ one }) => ({
+  organization: one(organizations, { fields: [knowledgeArticles.organizationId], references: [organizations.id] }),
+  createdBy: one(users, { fields: [knowledgeArticles.createdById], references: [users.id] }),
 }));
 
 export const rolesRelations = relations(roles, ({ one, many }) => ({

@@ -155,6 +155,13 @@
       "when": 1790131199250,
       "tag": "0021_case_management",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1790132226764,
+      "tag": "0022_knowledge_base",
+      "breakpoints": true
     }
   ]
 }

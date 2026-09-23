@@ -22,6 +22,9 @@ export type DocumentType = 'PROPOSAL' | 'MOM' | 'PRESENTATION' | 'CONTRACT' | 'B
 export type CaseStatus = 'NEW' | 'OPEN' | 'PENDING' | 'ON_HOLD' | 'RESOLVED' | 'CLOSED';
 export type CasePriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
 
+// Phase 9 ("advanced CRM" slice) — knowledge base.
+export type ArticleStatus = 'DRAFT' | 'PUBLISHED';
+
 export const LEAD_STATUSES: LeadStatus[] = [
   'NEW', 'CONTACTED', 'QUALIFIED', 'MEETING_SCHEDULED', 'MEETING_DONE', 'DEMO_SCHEDULED',
   'DEMO_DONE', 'PROPOSAL_SENT', 'NEGOTIATION', 'ON_HOLD', 'WON', 'LOST', 'DISQUALIFIED',
@@ -253,6 +256,20 @@ export interface Case {
   assignedTo?: UserSummary | null;
   createdBy?: UserSummary | null;
   comments?: CaseComment[];
+}
+
+export interface KnowledgeArticle {
+  id: string;
+  title: string;
+  category: string | null;
+  tags: string[];
+  content: string;
+  status: ArticleStatus;
+  createdById: string | null;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: UserSummary | null;
 }
 
 export interface Campaign {

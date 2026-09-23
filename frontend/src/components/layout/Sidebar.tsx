@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Target, Building2, Users, Megaphone, Activity, CalendarClock, ListChecks,
   FileText, BarChart3, UserCog, ShieldCheck, KeyRound, Settings, ChevronLeft, ChevronRight,
-  SlidersHorizontal, Box, GitMerge, LifeBuoy,
+  SlidersHorizontal, Box, GitMerge, LifeBuoy, BookOpen,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useUIStore } from '@/store/uiStore';
@@ -37,6 +37,10 @@ const NAV_ITEMS: NavItem[] = [
   // CASES_MANAGE's own comment in lib/permissions.ts) — the nav item itself stays visible to
   // everyone so a caller without it can still see and comment on cases, just not manage them.
   { label: 'Cases', to: '/cases', icon: LifeBuoy },
+  // Phase 9 ("advanced CRM" slice) — knowledge base. Ungated like Cases above: viewing published
+  // articles needs no permission; only creating/editing/deleting one (and seeing drafts at all)
+  // requires KNOWLEDGE_BASE_MANAGE — see that permission's own comment in lib/permissions.ts.
+  { label: 'Knowledge Base', to: '/knowledge-base', icon: BookOpen },
   { label: 'Documents', to: '/documents', icon: FileText },
   { label: 'Activity Feed', to: '/activities', icon: Activity },
   { label: 'Reports', to: '/reports', icon: BarChart3, permission: PERMISSIONS.REPORTS_VIEW },

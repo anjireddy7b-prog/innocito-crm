@@ -1,7 +1,7 @@
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { humanizeEnum } from '@/lib/utils';
-import type { LeadStatus, LeadPriority, TaskStatus, MeetingStatus, CaseStatus, CasePriority } from '@/types';
+import type { LeadStatus, LeadPriority, TaskStatus, MeetingStatus, CaseStatus, CasePriority, ArticleStatus } from '@/types';
 
 const LEAD_STATUS_STYLES: Record<LeadStatus, string> = {
   NEW: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
@@ -82,4 +82,14 @@ const CASE_PRIORITY_STYLES: Record<CasePriority, string> = {
 
 export function CasePriorityBadge({ priority, className }: { priority: CasePriority; className?: string }) {
   return <Badge className={cn('border-transparent font-medium', CASE_PRIORITY_STYLES[priority], className)}>{humanizeEnum(priority)}</Badge>;
+}
+
+// Phase 9 ("advanced CRM" slice) — knowledge base.
+const ARTICLE_STATUS_STYLES: Record<ArticleStatus, string> = {
+  DRAFT: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+  PUBLISHED: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+};
+
+export function ArticleStatusBadge({ status, className }: { status: ArticleStatus; className?: string }) {
+  return <Badge className={cn('border-transparent font-medium', ARTICLE_STATUS_STYLES[status], className)}>{humanizeEnum(status)}</Badge>;
 }

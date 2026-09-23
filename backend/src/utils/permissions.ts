@@ -47,6 +47,10 @@ export const PERMISSIONS = {
   // carve a "view" permission out for; viewing (GET /cases, GET /cases/:id) is unconditional for any
   // authenticated org member, mirroring Companies/Contacts themselves having no view-time gate.
   CASES_MANAGE: 'cases:manage',
+  // Phase 9 ("advanced CRM" slice): create/edit/delete knowledge base articles, and view DRAFT
+  // ones (a PUBLISHED article needs no permission to view — see this permission's usage in
+  // knowledgeBase.service.ts). Same single-permission-per-module shape as CASES_MANAGE above.
+  KNOWLEDGE_BASE_MANAGE: 'knowledge_base:manage',
 
   LEADS_CREATE: 'leads:create',
   LEADS_VIEW: 'leads:view',
@@ -95,6 +99,7 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     PERMISSIONS.DASHBOARD_VIEW,
     PERMISSIONS.REPORTS_VIEW,
     PERMISSIONS.CASES_MANAGE,
+    PERMISSIONS.KNOWLEDGE_BASE_MANAGE,
   ],
   SALES: [
     PERMISSIONS.LEADS_VIEW,
@@ -106,6 +111,7 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     PERMISSIONS.DASHBOARD_VIEW,
     PERMISSIONS.REPORTS_VIEW,
     PERMISSIONS.CASES_MANAGE,
+    PERMISSIONS.KNOWLEDGE_BASE_MANAGE,
   ],
   DELIVERY: [
     PERMISSIONS.LEADS_VIEW,
@@ -117,10 +123,12 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     PERMISSIONS.DASHBOARD_VIEW,
     PERMISSIONS.REPORTS_VIEW,
     // Phase 9: DELIVERY owns technical/post-sale delivery, the team most likely to work support
-    // cases day to day — same "operational, hands-on" tier as its existing TASKS_MANAGE/
-    // MEETINGS_MANAGE grants, not the org-wide-reference-data tier COMPANIES_MANAGE/CONTACTS_MANAGE
-    // sits in (which DELIVERY deliberately does NOT hold either).
+    // cases (and write up what they learn as knowledge base articles) day to day — same
+    // "operational, hands-on" tier as its existing TASKS_MANAGE/MEETINGS_MANAGE grants, not the
+    // org-wide-reference-data tier COMPANIES_MANAGE/CONTACTS_MANAGE sits in (which DELIVERY
+    // deliberately does NOT hold either).
     PERMISSIONS.CASES_MANAGE,
+    PERMISSIONS.KNOWLEDGE_BASE_MANAGE,
   ],
   MANAGEMENT: [
     PERMISSIONS.LEADS_VIEW,
@@ -155,6 +163,7 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionKey, string> = {
   [PERMISSIONS.SAVED_VIEWS_MANAGE_SHARED]: 'Create, edit, and delete shared (organization-wide) saved views',
   [PERMISSIONS.VALIDATION_RULES_MANAGE]: 'Create, edit, and delete validation rules on leads',
   [PERMISSIONS.CASES_MANAGE]: 'Create, edit, and delete cases and case comments; change case status, priority, and assignment',
+  [PERMISSIONS.KNOWLEDGE_BASE_MANAGE]: 'Create, edit, and delete knowledge base articles; view and publish drafts',
   [PERMISSIONS.LEADS_CREATE]: 'Create new leads',
   [PERMISSIONS.LEADS_VIEW]: 'View leads',
   [PERMISSIONS.LEADS_EDIT_OWN]: 'Edit leads you are assigned to / own / created',

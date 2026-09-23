@@ -11,6 +11,7 @@ export const PERMISSIONS = {
   SAVED_VIEWS_MANAGE_SHARED: 'saved_views:manage_shared',
   VALIDATION_RULES_MANAGE: 'validation_rules:manage',
   CASES_MANAGE: 'cases:manage',
+  KNOWLEDGE_BASE_MANAGE: 'knowledge_base:manage',
 
   LEADS_CREATE: 'leads:create',
   LEADS_VIEW: 'leads:view',
