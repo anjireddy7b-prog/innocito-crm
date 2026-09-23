@@ -7,6 +7,10 @@ export interface GlobalSearchResult {
   contacts: { id: string; firstName: string; lastName: string; email: string | null; company?: { name: string } | null }[];
   campaigns: { id: string; name: string; code: string | null }[];
   salesReps: { id: string; firstName: string; lastName: string; email: string }[];
+  // Phase 9 ("advanced CRM" slice) — search hardening. Added after Cases/Knowledge Base themselves
+  // shipped without global search coverage (see those modules' own Architecture Report sections).
+  cases: { id: string; displayId: string; subject: string; status: string }[];
+  knowledgeArticles: { id: string; title: string; category: string | null; status: string }[];
 }
 
 export function useGlobalSearch(q: string) {

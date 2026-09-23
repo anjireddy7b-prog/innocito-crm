@@ -3,18 +3,22 @@ import { and, eq, ilike, or, SQL } from 'drizzle-orm';
 import { authenticate } from '@/middleware/auth';
 import { asyncHandler } from '@/utils/asyncHandler';
 import { db } from '@/config/db';
-import { leads, companies, contacts, campaigns, users } from '@/db/schema';
+import { leads, companies, contacts, campaigns, users, cases, knowledgeArticles } from '@/db/schema';
 import { formatLeadNumber, parseLeadNumber } from '@/utils/leadNumber';
+import { formatCaseNumber } from '@/modules/cases/cases.service';
 import { ApiError } from '@/utils/ApiError';
+import { PERMISSIONS } from '@/utils/permissions';
 import { orgId } from '@/utils/tenant';
 
 export const searchRouter = Router();
 searchRouter.use(authenticate);
 
 /**
- * Global instant search — queries Leads, Companies, Contacts, Campaigns and
- * assignable Users (sales reps) in parallel and returns grouped, capped
- * result sets for the top-nav autocomplete dropdown.
+ * Global instant search — queries Leads, Companies, Contacts, Campaigns, assignable Users (sales
+ * reps), Cases, and Knowledge Base articles in parallel and returns grouped, capped result sets
+ * for the top-nav autocomplete dropdown. Cases and Knowledge Base articles were deliberately left
+ * out when their modules first shipped (Phase 9's Sections W/X) and are added here as the
+ * "search hardening" slice of the same phase.
  */
 searchRouter.get(
   '/',
@@ -24,8 +28,13 @@ searchRouter.get(
     if (q.length < 2) throw ApiError.badRequest('Search query must be at least 2 characters');
     const term = `%${q}%`;
     const leadNumber = parseLeadNumber(q);
+    // Same visibility rule as knowledgeBase.service.ts's own listArticles/getArticleById: a
+    // caller without KNOWLEDGE_BASE_MANAGE only ever matches PUBLISHED articles here — a DRAFT
+    // article's existence isn't disclosed via search any more than it is via the list/detail
+    // endpoints.
+    const canManageKnowledgeBase = req.user!.permissions.includes(PERMISSIONS.KNOWLEDGE_BASE_MANAGE);
 
-    const [leadRows, companyRows, contactRows, campaignRows, userRows] = await Promise.all([
+    const [leadRows, companyRows, contactRows, campaignRows, userRows, caseRows, articleRows] = await Promise.all([
       db
         .select({
           id: leads.id,
@@ -84,6 +93,23 @@ searchRouter.get(
         columns: { id: true, firstName: true, lastName: true, email: true },
         with: { role: { columns: { name: true } } },
       }),
+      db.query.cases.findMany({
+        where: and(
+          eq(cases.organizationId, org),
+          or(ilike(cases.subject, term), ilike(cases.description, term))
+        ),
+        limit: 6,
+        columns: { id: true, caseNumber: true, subject: true, status: true },
+      }),
+      db.query.knowledgeArticles.findMany({
+        where: and(
+          eq(knowledgeArticles.organizationId, org),
+          ...(canManageKnowledgeBase ? [] : [eq(knowledgeArticles.status, 'PUBLISHED' as const)]),
+          or(ilike(knowledgeArticles.title, term), ilike(knowledgeArticles.content, term))
+        ),
+        limit: 6,
+        columns: { id: true, title: true, category: true, status: true },
+      }),
     ]);
 
     res.json({
@@ -99,6 +125,8 @@ searchRouter.get(
         contacts: contactRows,
         campaigns: campaignRows,
         salesReps: userRows,
+        cases: caseRows.map((c) => ({ id: c.id, displayId: formatCaseNumber(c.caseNumber), subject: c.subject, status: c.status })),
+        knowledgeArticles: articleRows,
       },
     });
   })

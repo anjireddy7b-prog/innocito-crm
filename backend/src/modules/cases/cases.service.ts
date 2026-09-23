@@ -8,9 +8,11 @@ import { paginationMeta, toLimitOffset } from '@/utils/pagination';
 import { orgId } from '@/utils/tenant';
 
 /** "CS-000001" — same zero-padded, prefixed display format as leads' formatLeadNumber(), kept as
- * a private one-liner here rather than its own utils file since (unlike leadNumber.ts) nothing else
- * needs to parse a case number back out of user input yet. */
-function formatCaseNumber(seq: number): string {
+ * a one-liner here rather than its own utils file since (unlike leadNumber.ts) nothing needs to
+ * parse a case number back out of user input yet. Exported (Phase 9's search-hardening slice) so
+ * search.routes.ts's global search can render the same "CS-000001" displayId on a matched case
+ * that CasesListPage/CaseDetailPage already show. */
+export function formatCaseNumber(seq: number): string {
   return `CS-${String(seq).padStart(6, '0')}`;
 }
 

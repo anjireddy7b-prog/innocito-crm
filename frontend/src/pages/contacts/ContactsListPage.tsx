@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Plus, Search } from 'lucide-react';
+import { Plus, Search, Download } from 'lucide-react';
+import { toast } from 'sonner';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { DataTable, DataTableColumn } from '@/components/shared/DataTable';
 import { Pagination } from '@/components/shared/Pagination';
@@ -11,6 +12,8 @@ import { Badge } from '@/components/ui/badge';
 import { useContacts } from '@/api/contacts';
 import { useAuthStore } from '@/store/authStore';
 import { PERMISSIONS } from '@/lib/permissions';
+import { downloadFile } from '@/lib/download';
+import { apiErrorMessage } from '@/lib/api';
 import { initials } from '@/lib/utils';
 import type { Contact } from '@/types';
 import { ContactFormDialog } from '@/pages/contacts/ContactFormDialog';
@@ -21,6 +24,21 @@ export default function ContactsListPage() {
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const [search, setSearch] = useState(params.get('search') ?? '');
   const [createOpen, setCreateOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  // Contacts have no import of their own — they're imported as part of Companies' bulk import
+  // (see CompanyImportDialog.tsx) — but export stands alone here, same as Companies' own
+  // Export CSV button.
+  async function handleExport() {
+    setExporting(true);
+    try {
+      await downloadFile('/reports/contacts/export.csv', 'contacts-export.csv');
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Failed to export contacts'));
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const page = Number(params.get('page') ?? 1);
   const query = useMemo(
@@ -65,11 +83,16 @@ export default function ContactsListPage() {
         title="Contacts"
         description="Individual people tied to companies and leads across your pipeline."
         actions={
-          hasPermission(PERMISSIONS.CONTACTS_MANAGE) && (
-            <Button onClick={() => setCreateOpen(true)}>
-              <Plus /> New Contact
+          <>
+            <Button variant="outline" onClick={handleExport} loading={exporting}>
+              <Download /> Export CSV
             </Button>
-          )
+            {hasPermission(PERMISSIONS.CONTACTS_MANAGE) && (
+              <Button onClick={() => setCreateOpen(true)}>
+                <Plus /> New Contact
+              </Button>
+            )}
+          </>
         }
       />
 

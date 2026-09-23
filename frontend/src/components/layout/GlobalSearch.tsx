@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Building2, User, Megaphone, UserCog, Loader2 } from 'lucide-react';
+import { Search, Building2, User, Megaphone, UserCog, LifeBuoy, BookOpen, Loader2 } from 'lucide-react';
 import { useGlobalSearch } from '@/api/search';
 import { cn } from '@/lib/utils';
 
@@ -26,7 +26,14 @@ export function GlobalSearch() {
   }
 
   const hasResults =
-    data && (data.leads.length || data.companies.length || data.contacts.length || data.campaigns.length || data.salesReps.length);
+    data &&
+    (data.leads.length ||
+      data.companies.length ||
+      data.contacts.length ||
+      data.campaigns.length ||
+      data.salesReps.length ||
+      data.cases.length ||
+      data.knowledgeArticles.length);
 
   return (
     <div ref={containerRef} className="relative w-full max-w-xl">
@@ -39,7 +46,7 @@ export function GlobalSearch() {
             setOpen(true);
           }}
           onFocus={() => setOpen(true)}
-          placeholder="Search leads, companies, contacts, campaigns, reps…"
+          placeholder="Search leads, companies, contacts, cases, articles…"
           className="h-9 w-full rounded-full border border-transparent bg-secondary/70 pl-9 pr-9 text-sm transition-all placeholder:text-muted-foreground focus-visible:border-ring/40 focus-visible:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
         />
         {isFetching && <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />}
@@ -81,6 +88,20 @@ export function GlobalSearch() {
             <SearchSection title="Sales Representatives">
               {data.salesReps.map((u) => (
                 <SearchRow key={u.id} icon={UserCog} label={`${u.firstName} ${u.lastName}`} sublabel={u.email} onClick={() => go(`/leads?assignedToId=${u.id}`)} />
+              ))}
+            </SearchSection>
+          )}
+          {!!data?.cases.length && (
+            <SearchSection title="Cases">
+              {data.cases.map((c) => (
+                <SearchRow key={c.id} icon={LifeBuoy} label={c.subject} sublabel={`${c.displayId} · ${c.status.replace(/_/g, ' ')}`} onClick={() => go(`/cases/${c.id}`)} />
+              ))}
+            </SearchSection>
+          )}
+          {!!data?.knowledgeArticles.length && (
+            <SearchSection title="Knowledge Base">
+              {data.knowledgeArticles.map((a) => (
+                <SearchRow key={a.id} icon={BookOpen} label={a.title} sublabel={[a.category, a.status === 'DRAFT' ? 'Draft' : null].filter(Boolean).join(' · ')} onClick={() => go(`/knowledge-base/${a.id}`)} />
               ))}
             </SearchSection>
           )}

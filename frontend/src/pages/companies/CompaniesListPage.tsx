@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Plus, Search, Building2 } from 'lucide-react';
+import { Plus, Search, Building2, Download, Upload } from 'lucide-react';
+import { toast } from 'sonner';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { DataTable, DataTableColumn } from '@/components/shared/DataTable';
 import { Pagination } from '@/components/shared/Pagination';
@@ -11,9 +12,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useCompanies } from '@/api/companies';
 import { useAuthStore } from '@/store/authStore';
 import { PERMISSIONS } from '@/lib/permissions';
+import { downloadFile } from '@/lib/download';
+import { apiErrorMessage } from '@/lib/api';
 import type { Company } from '@/types';
 import { INDUSTRY_OPTIONS, COUNTRY_OPTIONS } from '@/lib/leadFormOptions';
 import { CompanyFormDialog } from '@/pages/companies/CompanyFormDialog';
+import { CompanyImportDialog } from '@/pages/companies/CompanyImportDialog';
 
 export default function CompaniesListPage() {
   const [params, setParams] = useSearchParams();
@@ -21,6 +25,22 @@ export default function CompaniesListPage() {
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const [search, setSearch] = useState(params.get('search') ?? '');
   const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  // Mirrors LeadsListPage.tsx's own handleExport — same unconditional button (the backend route
+  // enforces REPORTS_EXPORT and a toast surfaces the 403 for anyone who lacks it) rather than
+  // gating the button's visibility separately.
+  async function handleExport() {
+    setExporting(true);
+    try {
+      await downloadFile('/reports/companies/export.csv', 'companies-export.csv');
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Failed to export companies'));
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const page = Number(params.get('page') ?? 1);
   const query = useMemo(
@@ -72,11 +92,21 @@ export default function CompaniesListPage() {
         title="Companies"
         description="Every organization your team has engaged with, consolidated from leads and contacts."
         actions={
-          hasPermission(PERMISSIONS.COMPANIES_MANAGE) && (
-            <Button onClick={() => setCreateOpen(true)}>
-              <Plus /> New Company
+          <>
+            <Button variant="outline" onClick={handleExport} loading={exporting}>
+              <Download /> Export CSV
             </Button>
-          )
+            {hasPermission(PERMISSIONS.COMPANIES_MANAGE) && (
+              <>
+                <Button variant="outline" onClick={() => setImportOpen(true)}>
+                  <Upload /> Import
+                </Button>
+                <Button onClick={() => setCreateOpen(true)}>
+                  <Plus /> New Company
+                </Button>
+              </>
+            )}
+          </>
         }
       />
 
@@ -134,6 +164,7 @@ export default function CompaniesListPage() {
       )}
 
       <CompanyFormDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <CompanyImportDialog open={importOpen} onOpenChange={setImportOpen} />
     </div>
   );
 }

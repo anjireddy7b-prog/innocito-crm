@@ -53,3 +53,31 @@ export function useDeleteCompany() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['companies'] }),
   });
 }
+
+// Phase 9 ("advanced CRM" slice) — import/export & search hardening. Mirrors api/leads.ts's own
+// LeadImportResult/useImportLeads exactly, just with the fields this import actually returns
+// (companies + an optional contact per row, no leads/campaigns/meetings involved).
+export interface CompanyImportResult {
+  totalDataRows: number;
+  companiesCreated: number;
+  contactsCreated: number;
+  skippedDuplicateContacts: number;
+  skippedInvalidRows: number;
+  errors: { row: number; message: string }[];
+}
+
+export function useImportCompanies() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await api.post<ApiEnvelope<CompanyImportResult>>('/companies/import', formData);
+      return res.data.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['companies'] });
+      qc.invalidateQueries({ queryKey: ['contacts'] });
+    },
+  });
+}

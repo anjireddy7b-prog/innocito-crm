@@ -7,7 +7,7 @@ import { authenticate, requirePermission } from '@/middleware/auth';
 import { asyncHandler } from '@/utils/asyncHandler';
 import { PERMISSIONS } from '@/utils/permissions';
 import { db } from '@/config/db';
-import { leads } from '@/db/schema';
+import { leads, companies, contacts } from '@/db/schema';
 import { formatLeadNumber } from '@/utils/leadNumber';
 import { recordAudit } from '@/utils/auditLogger';
 import { orgId } from '@/utils/tenant';
@@ -93,6 +93,84 @@ reportsRouter.get(
     res.setHeader('Content-Disposition', 'attachment; filename="leads-export.xlsx"');
     await workbook.xlsx.write(res);
     res.end();
+  })
+);
+
+// Phase 9 ("advanced CRM" slice) — import/export & search hardening. Companies/Contacts get a
+// single CSV export each rather than the full CSV/XLSX/PDF trio leads has — that trio lives on
+// ReportsPage.tsx as part of its pipeline-reporting focus, whereas Companies/Contacts just need a
+// working default export, the same "Export CSV" affordance LeadsListPage.tsx already offers
+// inline (in addition to, not instead of, ReportsPage's fuller leads export). Both stay on this
+// same reportsRouter, so REPORTS_EXPORT (already required for every route above) covers them too
+// — no new permission needed.
+async function fetchCompaniesForExport(org: string) {
+  return db.query.companies.findMany({
+    where: eq(companies.organizationId, org),
+    orderBy: desc(companies.createdAt),
+  });
+}
+
+function toCompanyRow(c: Awaited<ReturnType<typeof fetchCompaniesForExport>>[number]) {
+  return {
+    'Company': c.name,
+    'Domain': c.domain ?? '',
+    'Website': c.website ?? '',
+    'Industry': c.industry ?? '',
+    'Company Size': c.companySize ?? '',
+    'Revenue': c.annualRevenue ? Number(c.annualRevenue) : '',
+    'Phone': c.phone ?? '',
+    'City': c.city ?? '',
+    'State': c.state ?? '',
+    'Country': c.country ?? '',
+    'LinkedIn': c.linkedinUrl ?? '',
+    'Created At': c.createdAt.toISOString().slice(0, 10),
+  };
+}
+
+reportsRouter.get(
+  '/companies/export.csv',
+  asyncHandler(async (req, res) => {
+    const rows = await fetchCompaniesForExport(orgId(req));
+    const csv = stringify(rows.map(toCompanyRow), { header: true });
+    await recordAudit({ req, action: 'EXPORT', entityType: 'Company', newValues: { format: 'csv', count: rows.length } });
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="companies-export.csv"');
+    res.send(csv);
+  })
+);
+
+async function fetchContactsForExport(org: string) {
+  return db.query.contacts.findMany({
+    where: eq(contacts.organizationId, org),
+    orderBy: desc(contacts.createdAt),
+    with: { company: { columns: { name: true } } },
+  });
+}
+
+function toContactRow(c: Awaited<ReturnType<typeof fetchContactsForExport>>[number]) {
+  return {
+    'Contact': `${c.firstName} ${c.lastName}`,
+    'Company': c.company?.name ?? '',
+    'Designation': c.designation ?? '',
+    'Email': c.email ?? '',
+    'Phone': c.phone ?? '',
+    'City': c.city ?? '',
+    'State': c.state ?? '',
+    'Country': c.country ?? '',
+    'Primary': c.isPrimary ? 'Yes' : 'No',
+    'Created At': c.createdAt.toISOString().slice(0, 10),
+  };
+}
+
+reportsRouter.get(
+  '/contacts/export.csv',
+  asyncHandler(async (req, res) => {
+    const rows = await fetchContactsForExport(orgId(req));
+    const csv = stringify(rows.map(toContactRow), { header: true });
+    await recordAudit({ req, action: 'EXPORT', entityType: 'Contact', newValues: { format: 'csv', count: rows.length } });
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="contacts-export.csv"');
+    res.send(csv);
   })
 );
 
