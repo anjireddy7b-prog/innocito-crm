@@ -68,6 +68,14 @@ export const casePriorityEnum = pgEnum('case_priority', ['LOW', 'MEDIUM', 'HIGH'
 // PUBLISHED ones are visible to any authenticated org member. See modules/knowledgeBase/
 // knowledgeBase.service.ts.
 export const knowledgeArticleStatusEnum = pgEnum('knowledge_article_status', ['DRAFT', 'PUBLISHED']);
+// Phase 9 ("advanced CRM" slice) — sequences/email-calendar integration, Stage 1 (OAuth
+// connection infrastructure only; the sequences engine itself is a later, separate slice built on
+// top of this). A user optionally connects their own Google or Microsoft mailbox so sequence
+// emails (and any other transactional send) go out as them rather than the shared SMTP address;
+// SMTP (utils/emailer.ts) remains the always-available fallback when no connection exists or a
+// provider isn't server-configured. See utils/tokenCrypto.ts, utils/emailSender.ts, and
+// modules/integrations/*.
+export const oauthProviderEnum = pgEnum('oauth_provider', ['GOOGLE', 'MICROSOFT']);
 
 // ----------------------------------------------------------------------------
 // Multi-tenancy
@@ -670,6 +678,37 @@ export const knowledgeArticles = pgTable(
 );
 
 // ----------------------------------------------------------------------------
+// Phase 9 ("advanced CRM" slice) — email connections (sequences Stage 1)
+// ----------------------------------------------------------------------------
+// One row per USER (not per organization) — each rep connects their own mailbox, never a
+// shared org-wide inbox, hence the unique index on userId alone rather than (organizationId,
+// userId). organizationId is still carried (like refreshTokens carries userId only, but every
+// other Phase-9 table carries organizationId) so tenant-scoping helpers and admin/reporting
+// queries can filter without a join — same "denormalize the tenant key onto every table" rule
+// the rest of the schema already follows.
+// accessTokenEnc/refreshTokenEnc are AES-256-GCM ciphertext (iv.authTag.ciphertext, base64
+// segments — see utils/tokenCrypto.ts), never plaintext, and are never returned by any API
+// response (see modules/integrations/integrations.service.ts's getConnectionStatus, which
+// exposes only provider/emailAddress/connectedAt).
+export const emailConnections = pgTable(
+  'email_connections',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
+    userId: uuid('user_id').notNull().unique().references(() => users.id, { onDelete: 'cascade' }),
+    provider: oauthProviderEnum('provider').notNull(),
+    emailAddress: varchar('email_address', { length: 255 }).notNull(),
+    accessTokenEnc: text('access_token_enc').notNull(),
+    refreshTokenEnc: text('refresh_token_enc').notNull(),
+    tokenExpiresAt: timestamp('token_expires_at').notNull(),
+    scope: text('scope'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [index('email_connections_org_idx').on(t.organizationId)]
+);
+
+// ----------------------------------------------------------------------------
 // Engagement entities
 // ----------------------------------------------------------------------------
 export const meetings = pgTable(
@@ -899,6 +938,11 @@ export const knowledgeArticlesRelations = relations(knowledgeArticles, ({ one })
   createdBy: one(users, { fields: [knowledgeArticles.createdById], references: [users.id] }),
 }));
 
+export const emailConnectionsRelations = relations(emailConnections, ({ one }) => ({
+  organization: one(organizations, { fields: [emailConnections.organizationId], references: [organizations.id] }),
+  user: one(users, { fields: [emailConnections.userId], references: [users.id] }),
+}));
+
 export const rolesRelations = relations(roles, ({ one, many }) => ({
   organization: one(organizations, { fields: [roles.organizationId], references: [organizations.id] }),
   permissions: many(rolePermissions),
@@ -925,6 +969,10 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   createdBySdrLeads: many(leads, { relationName: 'leadCreatedBySdr' }),
   // Phase 9: case management.
   assignedCases: many(cases, { relationName: 'caseAssignedTo' }),
+  // Phase 9: sequences/email-calendar integration, Stage 1 — one optional connected mailbox
+  // per user (unique on emailConnections.userId, hence `one` here despite no explicit relationName
+  // pairing needed — there is only one relation between these two tables).
+  emailConnection: one(emailConnections, { fields: [users.id], references: [emailConnections.userId] }),
 }));
 
 export const companiesRelations = relations(companies, ({ one, many }) => ({

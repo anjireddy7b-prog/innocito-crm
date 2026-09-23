@@ -162,6 +162,13 @@
       "when": 1790132226764,
       "tag": "0022_knowledge_base",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1790135587659,
+      "tag": "0023_email_connections",
+      "breakpoints": true
     }
   ]
 }

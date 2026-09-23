@@ -1,10 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { useMutation } from '@tanstack/react-query';
-import { KeyRound, User, Shield, Building2 } from 'lucide-react';
+import { KeyRound, User, Shield, Building2, Mail, Send, Unlink } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,6 +15,13 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { changePasswordRequest } from '@/api/auth';
 import { useMyOrganization, useUpdateMyOrganization } from '@/api/organizations';
+import {
+  useIntegrationsStatus,
+  useDisconnectIntegration,
+  useTestSendIntegration,
+  connectProvider,
+  type OAuthProvider,
+} from '@/api/integrations';
 import { useAuthStore } from '@/store/authStore';
 import { PERMISSIONS } from '@/lib/permissions';
 import { apiErrorMessage } from '@/lib/api';
@@ -75,6 +83,8 @@ export default function SettingsPage() {
           default (see backend/src/utils/permissions.ts), the same permission this section's own
           PATCH /organizations/me route is now gated by. */}
       {hasPermission(PERMISSIONS.ORGANIZATION_MANAGE) && <OrganizationCard />}
+
+      <ConnectedAccountsCard />
 
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><KeyRound className="h-4 w-4" /> Change Password</CardTitle></CardHeader>
@@ -159,6 +169,124 @@ function OrganizationCard() {
               <Button type="submit" disabled={!isDirty} loading={updateOrganization.isPending}>Save Changes</Button>
             </div>
           </form>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Phase 9 ("advanced CRM" slice) — sequences/email-calendar integration, Stage 1 (OAuth
+// connection infrastructure only; the sequences engine itself is a later slice built on top of
+// this, so this card only manages the connection — sending sequence emails as it isn't wired up
+// yet). Visible to any authenticated user, unconditionally — connecting/disconnecting one's own
+// mailbox needs no permission grant, same as the rest of this page's Profile/Change Password
+// sections. Either provider stays disabled here until an Admin sets its three env vars on the
+// server (see backend/.env.example) — mirrors how the shared SMTP address is already an env-only
+// switch nobody configures from this UI.
+function ConnectedAccountsCard() {
+  const [params, setParams] = useSearchParams();
+  const { data: status, isLoading } = useIntegrationsStatus();
+  const disconnect = useDisconnectIntegration();
+  const testSend = useTestSendIntegration();
+  const [connecting, setConnecting] = useState<OAuthProvider | null>(null);
+
+  useEffect(() => {
+    const connected = params.get('connected');
+    if (!connected) return;
+    if (connected === 'error') {
+      const provider = params.get('provider');
+      toast.error(`Failed to connect${provider ? ` ${humanizeEnum(provider)}` : ''} — please try again.`);
+    } else {
+      toast.success(`Connected ${humanizeEnum(connected)} successfully`);
+    }
+    const next = new URLSearchParams(params);
+    next.delete('connected');
+    next.delete('provider');
+    setParams(next, { replace: true });
+    // Only ever meant to run once per redirect-back — re-running on every params change would
+    // re-fire the toast the moment the cleanup call above updates params itself.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function handleConnect(provider: OAuthProvider) {
+    setConnecting(provider);
+    try {
+      await connectProvider(provider); // full-page navigation away — see integrations.ts
+    } catch (err) {
+      toast.error(apiErrorMessage(err, `Failed to start ${humanizeEnum(provider)} connection`));
+      setConnecting(null);
+    }
+  }
+
+  function handleDisconnect() {
+    disconnect.mutate(undefined, {
+      onSuccess: () => toast.success('Disconnected'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to disconnect')),
+    });
+  }
+
+  function handleTestSend() {
+    testSend.mutate(undefined, {
+      onSuccess: () => toast.success('Test email sent — check your inbox'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to send test email')),
+    });
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><Mail className="h-4 w-4" /> Connected Accounts</CardTitle>
+        <CardDescription>Connect your own mailbox so outgoing emails are sent as you instead of the shared address.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : status?.connection ? (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium">Connected as {status.connection.emailAddress}</p>
+              <Badge variant="outline" className="mt-1">{humanizeEnum(status.connection.provider)}</Badge>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={handleTestSend} loading={testSend.isPending}>
+                <Send /> Send test email
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleDisconnect} loading={disconnect.isPending}>
+                <Unlink /> Disconnect
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                onClick={() => handleConnect('GOOGLE')}
+                disabled={!status?.google.configured}
+                loading={connecting === 'GOOGLE'}
+              >
+                Connect Google
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => handleConnect('MICROSOFT')}
+                disabled={!status?.microsoft.configured}
+                loading={connecting === 'MICROSOFT'}
+              >
+                Connect Microsoft
+              </Button>
+            </div>
+            {(!status?.google.configured || !status?.microsoft.configured) && (
+              <p className="text-xs text-muted-foreground">
+                {!status?.google.configured && !status?.microsoft.configured
+                  ? "Neither provider is configured on this server yet — ask your Admin to set it up."
+                  : `${!status?.google.configured ? 'Google' : 'Microsoft'} isn't configured on this server yet.`}
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Without a connection, outgoing emails use the shared address configured for this organization.
+            </p>
+          </div>
         )}
       </CardContent>
     </Card>

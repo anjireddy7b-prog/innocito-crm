@@ -19,6 +19,12 @@ export default defineConfig({
       SEED_ADMIN_EMAIL: 'admin@innocito.com',
       SEED_ADMIN_PASSWORD: 'ChangeMe!123',
       LOG_LEVEL: 'silent',
+      // Set so tokenCrypto.test.ts can exercise real encrypt/decrypt round trips. Deliberately the
+      // ONLY Phase 9 "sequences" env var set here — no GOOGLE_*/MICROSOFT_* vars are set, so
+      // googleOAuthEnabled/microsoftOAuthEnabled stay false in every test (each also requires its
+      // own three provider-specific vars, not just this key) and integrations.test.ts's "both
+      // providers report unconfigured" assertions hold without any mocking.
+      TOKEN_ENCRYPTION_KEY: 'wyPn2YTHDQx3OENm20nSh9U123TOQZtkDvqaEr2Lp3Y=',
     },
   },
   resolve: {

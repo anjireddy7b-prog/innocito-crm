@@ -26,6 +26,22 @@ const envSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASSWORD: z.string().optional(),
   SMTP_FROM: z.string().default('Innocito CRM <notifications@innocito.com>'),
+
+  // Phase 9 ("advanced CRM" slice) — sequences/email-calendar integration, Stage 1 (OAuth
+  // connection infrastructure). All optional, same on/off-switch pattern as SMTP_HOST above: a
+  // provider's OAuth flow only lights up once its own three vars are all set (see
+  // googleOAuthEnabled/microsoftOAuthEnabled below), and SMTP stays the always-available
+  // fallback (utils/emailSender.ts) regardless of whether either provider is configured.
+  // TOKEN_ENCRYPTION_KEY gates BOTH providers together, since it's what makes storing their
+  // tokens safe at all — a base64-encoded 32-byte (256-bit) key for AES-256-GCM (see
+  // utils/tokenCrypto.ts). Generate one with: `openssl rand -base64 32`.
+  TOKEN_ENCRYPTION_KEY: z.string().optional(),
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_REDIRECT_URI: z.string().optional(),
+  MICROSOFT_CLIENT_ID: z.string().optional(),
+  MICROSOFT_CLIENT_SECRET: z.string().optional(),
+  MICROSOFT_REDIRECT_URI: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -41,3 +57,14 @@ export const isProd = env.NODE_ENV === 'production';
 export const isTest = env.NODE_ENV === 'test';
 // True once real SMTP credentials are configured — see utils/emailer.ts.
 export const emailEnabled = !!env.SMTP_HOST;
+// True once a real 32-byte encryption key is configured — required before EITHER OAuth
+// provider is usable, since it's what makes storing their tokens safe (see utils/tokenCrypto.ts).
+export const tokenEncryptionEnabled = !!env.TOKEN_ENCRYPTION_KEY;
+// True once Google's OAuth client is fully configured (all three vars) AND encryption is on.
+// See modules/integrations/integrations.service.ts.
+export const googleOAuthEnabled =
+  tokenEncryptionEnabled && !!env.GOOGLE_CLIENT_ID && !!env.GOOGLE_CLIENT_SECRET && !!env.GOOGLE_REDIRECT_URI;
+// True once Microsoft's OAuth app registration is fully configured (all three vars) AND
+// encryption is on. See modules/integrations/integrations.service.ts.
+export const microsoftOAuthEnabled =
+  tokenEncryptionEnabled && !!env.MICROSOFT_CLIENT_ID && !!env.MICROSOFT_CLIENT_SECRET && !!env.MICROSOFT_REDIRECT_URI;

@@ -27,6 +27,7 @@ import { auditLogsRouter } from './auditLogs/auditLogs.routes';
 import { dashboardRouter } from './dashboard/dashboard.routes';
 import { searchRouter } from './search/search.routes';
 import { reportsRouter } from './reports/reports.routes';
+import { integrationsRouter } from './integrations/integrations.routes';
 
 export const apiRouter = Router();
 
@@ -58,3 +59,4 @@ apiRouter.use('/audit-logs', auditLogsRouter);
 apiRouter.use('/dashboard', dashboardRouter);
 apiRouter.use('/search', searchRouter);
 apiRouter.use('/reports', reportsRouter);
+apiRouter.use('/integrations', integrationsRouter);
