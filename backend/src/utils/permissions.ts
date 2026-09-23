@@ -101,6 +101,11 @@ export const PERMISSIONS = {
   // credential, and configuring where this organization's data gets POSTed to is squarely an
   // admin-level decision.
   WEBHOOKS_MANAGE: 'webhooks:manage',
+  // Phase 11 (API/integrations), slice 3: register/edit/delete third-party connector instances
+  // (Slack/HubSpot/Zoom/etc. — see modules/connectors/connectorProviders.ts). Same ADMIN-only,
+  // infrastructure-adjacent tier as WEBHOOKS_MANAGE/API_KEYS_MANAGE — a connector's config
+  // routinely holds a real external credential.
+  CONNECTORS_MANAGE: 'connectors:manage',
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -221,6 +226,7 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionKey, string> = {
   [PERMISSIONS.SETTINGS_MANAGE]: 'Manage system settings',
   [PERMISSIONS.API_KEYS_MANAGE]: 'Create, view, and revoke API keys for external integrations (read-only access)',
   [PERMISSIONS.WEBHOOKS_MANAGE]: 'Register, pause/resume, and delete outbound webhook endpoints; view their delivery history',
+  [PERMISSIONS.CONNECTORS_MANAGE]: 'Register, edit, and delete third-party connector instances (Slack, HubSpot, Zoom, etc.)',
 };
 
 /** Description seeded onto each organization's own copy of the 5 default roles. Editable

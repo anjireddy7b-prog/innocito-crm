@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { useMutation } from '@tanstack/react-query';
-import { KeyRound, User, Shield, Building2, Mail, Send, Unlink, CalendarClock, RefreshCw, Plus, Trash2, Code2, Webhook, Copy, Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { KeyRound, User, Shield, Building2, Mail, Send, Unlink, CalendarClock, RefreshCw, Plus, Trash2, Code2, Webhook, Copy, Check, ChevronDown, ChevronUp, Plug, Pencil } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -34,6 +34,14 @@ import {
   type WebhookEndpoint,
 } from '@/api/webhooks';
 import { WebhookFormDialog } from './settings/WebhookFormDialog';
+import {
+  useConnectorProviders,
+  useConnectorInstances,
+  useUpdateConnectorInstance,
+  useDeleteConnectorInstance,
+  type ConnectorInstance,
+} from '@/api/connectors';
+import { ConnectorFormDialog } from './settings/ConnectorFormDialog';
 import { Switch } from '@/components/ui/switch';
 import { useAuthStore } from '@/store/authStore';
 import { PERMISSIONS } from '@/lib/permissions';
@@ -107,6 +115,10 @@ export default function SettingsPage() {
       {/* Phase 11 (API/integrations), slice 2 — same "ADMIN by default" gate as API_KEYS_MANAGE
           just above; see backend/src/utils/permissions.ts's WEBHOOKS_MANAGE comment. */}
       {hasPermission(PERMISSIONS.WEBHOOKS_MANAGE) && <WebhooksCard />}
+
+      {/* Phase 11 (API/integrations), slice 3 — same "ADMIN by default" gate as the two cards
+          above; see backend/src/utils/permissions.ts's CONNECTORS_MANAGE comment. */}
+      {hasPermission(PERMISSIONS.CONNECTORS_MANAGE) && <ConnectorsCard />}
 
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><KeyRound className="h-4 w-4" /> Change Password</CardTitle></CardHeader>
@@ -579,5 +591,102 @@ function WebhookDeliveriesList({ endpointId }: { endpointId: string }) {
         </div>
       )}
     </div>
+  );
+}
+
+function ConnectorsCard() {
+  const { data: providers } = useConnectorProviders();
+  const { data: instances, isLoading } = useConnectorInstances();
+  const updateConnector = useUpdateConnectorInstance();
+  const deleteConnector = useDeleteConnectorInstance();
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<ConnectorInstance | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ConnectorInstance | null>(null);
+
+  function providerName(providerId: string) {
+    return providers?.find((p) => p.id === providerId)?.name ?? providerId;
+  }
+
+  return (
+    <Card>
+      <CardHeader className="flex-row items-start justify-between gap-2 space-y-0">
+        <div>
+          <CardTitle className="flex items-center gap-2"><Plug className="h-4 w-4" /> Connectors</CardTitle>
+          <CardDescription>Groundwork for third-party integrations (Slack, HubSpot, Zoom) — stores config for a provider; no live integration is wired up yet.</CardDescription>
+        </div>
+        <Button size="sm" onClick={() => { setEditing(null); setFormOpen(true); }}><Plus /> New Connector</Button>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <Skeleton className="h-24 rounded-xl" />
+        ) : !instances?.length ? (
+          <p className="text-sm text-muted-foreground">No connectors configured yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {instances.map((instance) => (
+              <div key={instance.id} className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border/60 p-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium">{instance.name}</p>
+                    <Badge variant="outline">{providerName(instance.providerId)}</Badge>
+                    {instance.isActive ? (
+                      <Badge variant="outline" className="border-transparent bg-emerald-100 font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">Active</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-muted-foreground">Paused</Badge>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 pt-1 text-xs text-muted-foreground">
+                    {Object.entries(instance.config).map(([key, value]) => (
+                      <span key={key}><code>{key}</code>: {value || '—'}</span>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Switch
+                    checked={instance.isActive}
+                    disabled={updateConnector.isPending}
+                    onCheckedChange={(checked) =>
+                      updateConnector.mutate(
+                        { id: instance.id, isActive: checked },
+                        { onError: (err) => toast.error(apiErrorMessage(err, 'Failed to update connector')) }
+                      )
+                    }
+                    aria-label={instance.isActive ? `Pause ${instance.name}` : `Resume ${instance.name}`}
+                  />
+                  <Button variant="ghost" size="icon" onClick={() => { setEditing(instance); setFormOpen(true); }} aria-label={`Edit ${instance.name}`}>
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(instance)} aria-label={`Delete ${instance.name}`}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+
+      <ConnectorFormDialog open={formOpen} onOpenChange={(o) => { setFormOpen(o); if (!o) setEditing(null); }} editing={editing} />
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => !o && setDeleteTarget(null)}
+        title={`Delete "${deleteTarget?.name}"?`}
+        description="Its stored config is deleted along with it. This can't be undone."
+        destructive
+        confirmLabel="Delete Connector"
+        loading={deleteConnector.isPending}
+        onConfirm={async () => {
+          if (!deleteTarget) return;
+          try {
+            await deleteConnector.mutateAsync(deleteTarget.id);
+            toast.success('Connector deleted');
+            setDeleteTarget(null);
+          } catch (err) {
+            toast.error(apiErrorMessage(err, 'Failed to delete connector'));
+          }
+        }}
+      />
+    </Card>
   );
 }

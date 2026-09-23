@@ -33,6 +33,7 @@ import { reportBuilderRouter } from './reportBuilder/reportBuilder.routes';
 import { dashboardWidgetsRouter } from './dashboardWidgets/dashboardWidgets.routes';
 import { apiKeysRouter } from './apiKeys/apiKeys.routes';
 import { webhooksRouter } from './webhooks/webhooks.routes';
+import { connectorsRouter } from './connectors/connectors.routes';
 
 export const apiRouter = Router();
 
@@ -70,3 +71,4 @@ apiRouter.use('/custom-reports', reportBuilderRouter);
 apiRouter.use('/dashboard-widgets', dashboardWidgetsRouter);
 apiRouter.use('/api-keys', apiKeysRouter);
 apiRouter.use('/webhooks', webhooksRouter);
+apiRouter.use('/connectors', connectorsRouter);

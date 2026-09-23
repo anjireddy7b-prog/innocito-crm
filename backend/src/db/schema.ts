@@ -1222,6 +1222,42 @@ export const webhookDeliveries = pgTable(
 );
 
 // ----------------------------------------------------------------------------
+// Phase 11 — API/integrations, slice 3: third-party connector abstraction layer
+// ----------------------------------------------------------------------------
+// Deliberately GROUNDWORK ONLY: this stores a tenant's configured connector instances (which
+// provider, a display name, its config values) but makes no outbound call to Slack/HubSpot/Zoom/
+// etc. itself — see modules/connectors/connectorProviders.ts's catalog comment. It exists so a
+// future slice that wires up one real provider has somewhere to store its config and a UI pattern
+// to extend, rather than inventing both at the same time it's also learning that provider's API.
+//
+// `providerId` is validated against the fixed, in-code CONNECTOR_PROVIDERS catalog (not a DB
+// enum), same "growable without a migration" shape as webhookEndpoints.eventTypes/apiKeys.
+// permissions. `configEnc` is the entire config object, JSON-serialized and then encrypted with
+// utils/tokenCrypto.ts's encryptToken/decryptToken — the exact same AES-256-GCM helper Phase 9
+// already built for email_connections' OAuth tokens (see that table's own comment), reused here
+// rather than re-decided: a connector's config commonly holds a real secret (an API token, a
+// webhook signing key), so the whole blob is encrypted rather than only the fields the catalog
+// happens to mark 'secret' — simpler, and safer against a catalog entry that mis-marks a field.
+// This means creating or updating a connector instance requires TOKEN_ENCRYPTION_KEY to be
+// configured, exactly like Phase 9's googleOAuthEnabled/microsoftOAuthEnabled already require —
+// see connectors.service.ts.
+export const connectorInstances = pgTable(
+  'connector_instances',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
+    providerId: varchar('provider_id', { length: 100 }).notNull(),
+    name: varchar('name', { length: 150 }).notNull(),
+    configEnc: text('config_enc').notNull(),
+    isActive: boolean('is_active').notNull().default(true),
+    createdById: uuid('created_by_id').references(() => users.id),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [index('connector_instances_org_idx').on(t.organizationId)]
+);
+
+// ----------------------------------------------------------------------------
 // Relations (powers Drizzle's relational query API: db.query.leads.findMany({with:{...}}))
 // ----------------------------------------------------------------------------
 export const organizationsRelations = relations(organizations, ({ many }) => ({
@@ -1241,6 +1277,7 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
   dashboardWidgets: many(dashboardWidgets),
   apiKeys: many(apiKeys),
   webhookEndpoints: many(webhookEndpoints),
+  connectorInstances: many(connectorInstances),
 }));
 
 export const apiKeysRelations = relations(apiKeys, ({ one }) => ({
@@ -1257,6 +1294,11 @@ export const webhookEndpointsRelations = relations(webhookEndpoints, ({ one, man
 export const webhookDeliveriesRelations = relations(webhookDeliveries, ({ one }) => ({
   organization: one(organizations, { fields: [webhookDeliveries.organizationId], references: [organizations.id] }),
   webhookEndpoint: one(webhookEndpoints, { fields: [webhookDeliveries.webhookEndpointId], references: [webhookEndpoints.id] }),
+}));
+
+export const connectorInstancesRelations = relations(connectorInstances, ({ one }) => ({
+  organization: one(organizations, { fields: [connectorInstances.organizationId], references: [organizations.id] }),
+  createdBy: one(users, { fields: [connectorInstances.createdById], references: [users.id] }),
 }));
 
 export const customFieldDefinitionsRelations = relations(customFieldDefinitions, ({ one }) => ({
