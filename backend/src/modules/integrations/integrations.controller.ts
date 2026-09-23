@@ -31,9 +31,17 @@ function callbackHandler(provider: OAuthProvider) {
     const redirectBase = `${env.CLIENT_ORIGIN.split(',')[0].trim()}/settings`;
 
     if (providerError) {
+      // Temporary diagnostic logging (Stage 3 rollout) — the provider redirected back with an
+      // error before we ever got a code/state to work with; log what it said so this is
+      // debuggable from Railway logs instead of a silent "connected=error" redirect.
+      logger.warn(
+        { provider, error: providerError, description: (req.query as { error_description?: string }).error_description },
+        '[integrations] OAuth provider returned an error before code exchange'
+      );
       return res.redirect(`${redirectBase}?connected=error&provider=${provider.toLowerCase()}`);
     }
     if (!code || !state) {
+      logger.warn({ provider, hasCode: !!code, hasState: !!state }, '[integrations] OAuth callback missing code or state');
       return res.redirect(`${redirectBase}?connected=error&provider=${provider.toLowerCase()}`);
     }
 
