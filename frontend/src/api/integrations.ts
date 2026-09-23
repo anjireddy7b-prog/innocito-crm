@@ -10,7 +10,15 @@ export type OAuthProvider = 'GOOGLE' | 'MICROSOFT';
 export interface IntegrationsStatus {
   google: { configured: boolean };
   microsoft: { configured: boolean };
-  connection: { provider: OAuthProvider; emailAddress: string; connectedAt: string } | null;
+  connection: {
+    provider: OAuthProvider;
+    emailAddress: string;
+    connectedAt: string;
+    // Phase 9, Stage 3 (calendar sync): false for a connection made before the calendar scope
+    // existed — Settings prompts a one-time reconnect (the same "Connect" action, since the OAuth
+    // flow always requests full consent) rather than silently never syncing that rep's meetings.
+    calendarScopeGranted: boolean;
+  } | null;
 }
 
 export function useIntegrationsStatus() {

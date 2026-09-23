@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
-import { MeetingStatusBadge } from '@/components/shared/StatusBadge';
+import { MeetingStatusBadge, CalendarSyncIndicator } from '@/components/shared/StatusBadge';
 import { useMeetings } from '@/api/meetings';
 import { formatDateTime, humanizeEnum } from '@/lib/utils';
 import type { Meeting } from '@/types';
@@ -52,7 +52,10 @@ export default function MeetingsPage() {
                     <span>{humanizeEnum(m.type)}</span>
                   </div>
                 </div>
-                <MeetingStatusBadge status={m.status} />
+                <div className="flex items-center gap-2">
+                  <CalendarSyncIndicator status={m.calendarSyncStatus} provider={m.externalCalendarProvider} error={m.calendarSyncError} />
+                  <MeetingStatusBadge status={m.status} />
+                </div>
               </CardContent>
             </Card>
           ))}

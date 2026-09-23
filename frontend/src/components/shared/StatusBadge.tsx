@@ -1,7 +1,11 @@
+import { CalendarClock, CalendarX } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { humanizeEnum } from '@/lib/utils';
-import type { LeadStatus, LeadPriority, TaskStatus, MeetingStatus, CaseStatus, CasePriority, ArticleStatus, SequenceStatus, SequenceEnrollmentStatus } from '@/types';
+import type {
+  LeadStatus, LeadPriority, TaskStatus, MeetingStatus, CaseStatus, CasePriority, ArticleStatus,
+  SequenceStatus, SequenceEnrollmentStatus, CalendarSyncStatus,
+} from '@/types';
 
 const LEAD_STATUS_STYLES: Record<LeadStatus, string> = {
   NEW: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
@@ -115,5 +119,26 @@ const SEQUENCE_ENROLLMENT_STATUS_STYLES: Record<SequenceEnrollmentStatus, string
 export function SequenceEnrollmentStatusBadge({ status, className }: { status: SequenceEnrollmentStatus; className?: string }) {
   return (
     <Badge className={cn('border-transparent font-medium', SEQUENCE_ENROLLMENT_STATUS_STYLES[status], className)}>{humanizeEnum(status)}</Badge>
+  );
+}
+
+// Phase 9 ("advanced CRM" slice) — sequences/email-calendar integration, Stage 3. Deliberately
+// renders nothing for NOT_CONNECTED — that's the common case whenever nobody involved has
+// connected a calendar, and a badge on every single meeting for "nothing happened" would be
+// clutter, not information. Only SYNCED (reassurance) and FAILED (something needs attention) earn
+// a badge.
+export function CalendarSyncIndicator({ status, provider, error, className }: { status: CalendarSyncStatus; provider?: 'GOOGLE' | 'MICROSOFT' | null; error?: string | null; className?: string }) {
+  if (status === 'NOT_CONNECTED') return null;
+  if (status === 'SYNCED') {
+    return (
+      <Badge className={cn('border-transparent bg-emerald-100 font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300', className)}>
+        <CalendarClock className="mr-1 h-3 w-3" /> Synced to {provider === 'MICROSOFT' ? 'Outlook' : 'Google'} Calendar
+      </Badge>
+    );
+  }
+  return (
+    <Badge title={error ?? undefined} className={cn('border-transparent bg-red-100 font-medium text-red-700 dark:bg-red-900/40 dark:text-red-300', className)}>
+      <CalendarX className="mr-1 h-3 w-3" /> Calendar sync failed
+    </Badge>
   );
 }

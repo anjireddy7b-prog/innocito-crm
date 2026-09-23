@@ -8,10 +8,14 @@ import { ApiError } from '@/utils/ApiError';
 import { encryptToken, decryptToken } from '@/utils/tokenCrypto';
 
 /**
- * Phase 9 ("advanced CRM" slice) — sequences/email-calendar integration, Stage 1 (OAuth
- * connection infrastructure only; the sequences engine itself is a later, separate slice). A user
- * optionally connects their own Google or Microsoft mailbox; SMTP (utils/emailer.ts) is the
- * always-available fallback both here and in utils/emailSender.ts, which Stage 2 will call.
+ * Phase 9 ("advanced CRM" slice) — sequences/email-calendar integration. Stage 1 built this file
+ * as OAuth connection infrastructure only (email-send scope); Stage 2 (sequences engine) built on
+ * it via utils/emailSender.ts; Stage 3 (calendar sync, utils/calendarSync.ts) extended the same
+ * connection's requested scope to include calendar access and added createCalendarEvent/
+ * updateCalendarEvent/deleteCalendarEvent below, alongside sendViaProvider. A user optionally
+ * connects their own Google or Microsoft account; SMTP (utils/emailer.ts) is the always-available
+ * fallback for sending — there is no fallback for calendar sync, since there's no equivalent
+ * generic calendar to sync to without a real connection (see calendarSync.ts).
  *
  * OAuth flow threading (why this needs a signed `state` JWT rather than a session):
  * `GET /connect-url` is an ordinary AUTHENTICATED API call (Bearer token attached) that returns a
@@ -61,19 +65,36 @@ function verifyState(token: string, expectedProvider: OAuthProvider): OAuthState
 // Provider configuration — endpoints only (no SDK; plain fetch, matching the codebase's existing
 // lean-dependency style, same as nodemailer being the only email-related dependency today).
 // ----------------------------------------------------------------------------
+// Stage 3 ("calendar sync", see utils/calendarSync.ts) added the calendar scope below to both
+// providers' request scope. A connection made under Stage 1/2 (email-send scope only) still has
+// its OLD scope string persisted on its emailConnections row — CALENDAR_SCOPE_MARKER lets a
+// caller tell "never granted calendar access" apart from "granted", so Settings can prompt an
+// already-connected user to reconnect once, rather than silently never syncing their meetings.
+const CALENDAR_SCOPE_MARKER: Record<OAuthProvider, string> = {
+  GOOGLE: 'https://www.googleapis.com/auth/calendar.events',
+  MICROSOFT: 'Calendars.ReadWrite',
+};
+
+export function hasCalendarScope(provider: OAuthProvider, scope: string | null | undefined): boolean {
+  if (!scope) return false;
+  return scope.includes(CALENDAR_SCOPE_MARKER[provider]);
+}
+
 const GOOGLE = {
   authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
   tokenUrl: 'https://oauth2.googleapis.com/token',
   userInfoUrl: 'https://www.googleapis.com/oauth2/v2/userinfo',
   sendUrl: 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
-  scope: 'openid email https://www.googleapis.com/auth/gmail.send',
+  calendarEventsUrl: 'https://www.googleapis.com/calendar/v3/calendars/primary/events',
+  scope: `openid email https://www.googleapis.com/auth/gmail.send ${CALENDAR_SCOPE_MARKER.GOOGLE}`,
 };
 const MICROSOFT = {
   authUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
   tokenUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
   userInfoUrl: 'https://graph.microsoft.com/v1.0/me',
   sendUrl: 'https://graph.microsoft.com/v1.0/me/sendMail',
-  scope: 'offline_access User.Read Mail.Send',
+  calendarEventsUrl: 'https://graph.microsoft.com/v1.0/me/events',
+  scope: `offline_access User.Read Mail.Send ${CALENDAR_SCOPE_MARKER.MICROSOFT}`,
 };
 
 function assertProviderConfigured(provider: OAuthProvider) {
@@ -201,7 +222,14 @@ export async function getConnectionStatus(userId: string) {
     // Never exposes accessTokenEnc/refreshTokenEnc — only what's needed to render the Connected
     // Accounts card (see integrations.controller.ts's getStatus).
     connection: connection
-      ? { provider: connection.provider, emailAddress: connection.emailAddress, connectedAt: connection.createdAt }
+      ? {
+          provider: connection.provider,
+          emailAddress: connection.emailAddress,
+          connectedAt: connection.createdAt,
+          // Stage 3: false for a connection made before the calendar scope existed — Settings
+          // uses this to prompt a one-time reconnect rather than silently never syncing meetings.
+          calendarScopeGranted: hasCalendarScope(connection.provider as OAuthProvider, connection.scope),
+        }
       : null,
   };
 }
@@ -232,19 +260,23 @@ async function refreshAccessToken(provider: OAuthProvider, refreshToken: string)
 }
 
 /**
- * Returns a currently-valid access token + provider + email for the user's connection, refreshing
- * it first if it's within REFRESH_SKEW_MS of expiring. Returns null if the user has no connection
- * — callers (utils/emailSender.ts) fall back to SMTP in that case rather than treating it as an
- * error.
+ * Returns a currently-valid access token + provider + email + granted scope for the user's
+ * connection, refreshing it first if it's within REFRESH_SKEW_MS of expiring. Returns null if the
+ * user has no connection — callers (utils/emailSender.ts) fall back to SMTP in that case rather
+ * than treating it as an error; utils/calendarSync.ts additionally checks the returned `scope`
+ * with hasCalendarScope() before attempting any calendar call, since a connection existing is not
+ * the same as it having calendar access (see this file's own CALENDAR_SCOPE_MARKER comment).
  */
-export async function getValidAccessToken(userId: string): Promise<{ provider: OAuthProvider; email: string; accessToken: string } | null> {
+export async function getValidAccessToken(
+  userId: string
+): Promise<{ provider: OAuthProvider; email: string; accessToken: string; scope: string | null } | null> {
   const connection = await db.query.emailConnections.findFirst({ where: eq(emailConnections.userId, userId) });
   if (!connection) return null;
 
   const provider = connection.provider as OAuthProvider;
   const needsRefresh = connection.tokenExpiresAt.getTime() - Date.now() < REFRESH_SKEW_MS;
   if (!needsRefresh) {
-    return { provider, email: connection.emailAddress, accessToken: decryptToken(connection.accessTokenEnc) };
+    return { provider, email: connection.emailAddress, accessToken: decryptToken(connection.accessTokenEnc), scope: connection.scope };
   }
 
   const refreshToken = decryptToken(connection.refreshTokenEnc);
@@ -258,7 +290,7 @@ export async function getValidAccessToken(userId: string): Promise<{ provider: O
     })
     .where(eq(emailConnections.userId, userId));
 
-  return { provider, email: connection.emailAddress, accessToken: refreshed.accessToken };
+  return { provider, email: connection.emailAddress, accessToken: refreshed.accessToken, scope: connection.scope };
 }
 
 /** Sends a raw email via the provider's own send API, given an already-valid access token. */
@@ -305,4 +337,105 @@ export async function sendViaProvider(
     const text = await res.text().catch(() => '');
     throw ApiError.internal(`Graph sendMail failed: ${text}`);
   }
+}
+
+// ----------------------------------------------------------------------------
+// Calendar events — Stage 3. Raw provider calls only, kept here beside sendViaProvider (same
+// GOOGLE/MICROSOFT config, same auth-header shape); utils/calendarSync.ts is the thin
+// orchestration layer that decides whether a meeting's creator even has calendar access before
+// calling any of these — exactly the same split as utils/emailSender.ts wrapping sendViaProvider.
+// ----------------------------------------------------------------------------
+
+export interface CalendarEventInput {
+  title: string;
+  description?: string | null;
+  startAt: Date;
+  endAt: Date;
+  location?: string | null;
+  attendeeEmails: string[];
+}
+
+/** Creates an event on the provider's primary calendar. Returns the provider's own event id. */
+export async function createCalendarEvent(provider: OAuthProvider, accessToken: string, input: CalendarEventInput): Promise<string> {
+  if (provider === 'GOOGLE') {
+    const res = await fetch(GOOGLE.calendarEventsUrl, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(googleEventBody(input)),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw ApiError.internal(`Google Calendar event create failed: ${text}`);
+    }
+    const json = (await res.json()) as { id: string };
+    return json.id;
+  }
+
+  // MICROSOFT
+  const res = await fetch(MICROSOFT.calendarEventsUrl, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(microsoftEventBody(input)),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw ApiError.internal(`Graph calendar event create failed: ${text}`);
+  }
+  const json = (await res.json()) as { id: string };
+  return json.id;
+}
+
+/** Updates an existing event by its provider-native id (a full replace of the fields we manage). */
+export async function updateCalendarEvent(provider: OAuthProvider, accessToken: string, eventId: string, input: CalendarEventInput): Promise<void> {
+  const cfg = provider === 'GOOGLE' ? GOOGLE : MICROSOFT;
+  const res = await fetch(`${cfg.calendarEventsUrl}/${encodeURIComponent(eventId)}`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(provider === 'GOOGLE' ? googleEventBody(input) : microsoftEventBody(input)),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw ApiError.internal(`${provider} calendar event update failed: ${text}`);
+  }
+}
+
+/** Deletes an event by its provider-native id. A 404/410 (already gone on the provider's side —
+ * the user may have deleted it themselves from their own calendar) is treated as success, not an
+ * error, since the end state either way is "no event out there". */
+export async function deleteCalendarEvent(provider: OAuthProvider, accessToken: string, eventId: string): Promise<void> {
+  const cfg = provider === 'GOOGLE' ? GOOGLE : MICROSOFT;
+  const res = await fetch(`${cfg.calendarEventsUrl}/${encodeURIComponent(eventId)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok && res.status !== 404 && res.status !== 410) {
+    const text = await res.text().catch(() => '');
+    throw ApiError.internal(`${provider} calendar event delete failed: ${text}`);
+  }
+}
+
+function googleEventBody(input: CalendarEventInput) {
+  return {
+    summary: input.title,
+    description: input.description ?? undefined,
+    location: input.location ?? undefined,
+    // RFC3339 with a 'Z' suffix is self-describing as UTC — no separate timeZone field needed.
+    start: { dateTime: input.startAt.toISOString() },
+    end: { dateTime: input.endAt.toISOString() },
+    attendees: input.attendeeEmails.map((email) => ({ email })),
+  };
+}
+
+function microsoftEventBody(input: CalendarEventInput) {
+  // Graph's dateTime is LOCAL to the paired timeZone (never a 'Z'/offset suffix) — "UTC" is one of
+  // Graph's own recognized timezone names, so this pairs a bare ISO instant with it directly.
+  const toGraphDateTime = (d: Date) => ({ dateTime: d.toISOString().replace('Z', ''), timeZone: 'UTC' });
+  return {
+    subject: input.title,
+    body: { contentType: 'text', content: input.description ?? '' },
+    location: input.location ? { displayName: input.location } : undefined,
+    start: toGraphDateTime(input.startAt),
+    end: toGraphDateTime(input.endAt),
+    attendees: input.attendeeEmails.map((email) => ({ emailAddress: { address: email }, type: 'required' })),
+  };
 }

@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { useMutation } from '@tanstack/react-query';
-import { KeyRound, User, Shield, Building2, Mail, Send, Unlink } from 'lucide-react';
+import { KeyRound, User, Shield, Building2, Mail, Send, Unlink, CalendarClock, RefreshCw } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -236,25 +236,53 @@ function ConnectedAccountsCard() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2"><Mail className="h-4 w-4" /> Connected Accounts</CardTitle>
-        <CardDescription>Connect your own mailbox so outgoing emails are sent as you instead of the shared address.</CardDescription>
+        <CardDescription>Connect your own mailbox so outgoing emails are sent as you, and your meetings sync to your calendar, instead of staying CRM-only.</CardDescription>
       </CardHeader>
       <CardContent>
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : status?.connection ? (
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium">Connected as {status.connection.emailAddress}</p>
-              <Badge variant="outline" className="mt-1">{humanizeEnum(status.connection.provider)}</Badge>
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium">Connected as {status.connection.emailAddress}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <Badge variant="outline">{humanizeEnum(status.connection.provider)}</Badge>
+                  {status.connection.calendarScopeGranted ? (
+                    <Badge variant="outline" className="border-transparent bg-emerald-100 font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                      <CalendarClock className="mr-1 h-3 w-3" /> Calendar sync on
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="border-transparent bg-amber-100 font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                      Calendar sync not enabled
+                    </Badge>
+                  )}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={handleTestSend} loading={testSend.isPending}>
+                  <Send /> Send test email
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleDisconnect} loading={disconnect.isPending}>
+                  <Unlink /> Disconnect
+                </Button>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={handleTestSend} loading={testSend.isPending}>
-                <Send /> Send test email
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleDisconnect} loading={disconnect.isPending}>
-                <Unlink /> Disconnect
-              </Button>
-            </div>
+            {!status.connection.calendarScopeGranted && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/50 dark:bg-amber-900/20">
+                <p className="text-xs text-amber-800 dark:text-amber-300">
+                  This connection was made before calendar sync existed — reconnect once to also sync your meetings to {humanizeEnum(status.connection.provider)} Calendar.
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleConnect(status.connection!.provider)}
+                  loading={connecting === status.connection.provider}
+                >
+                  <RefreshCw /> Reconnect
+                </Button>
+              </div>
+            )}
           </div>
         ) : (
           <div className="space-y-3">
@@ -284,7 +312,7 @@ function ConnectedAccountsCard() {
               </p>
             )}
             <p className="text-xs text-muted-foreground">
-              Without a connection, outgoing emails use the shared address configured for this organization.
+              Without a connection, outgoing emails use the shared address configured for this organization, and your meetings stay CRM-only (not synced to a calendar).
             </p>
           </div>
         )}

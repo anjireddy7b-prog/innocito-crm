@@ -118,6 +118,9 @@ export interface Lead {
   activities?: Activity[];
 }
 
+// Phase 9 ("advanced CRM" slice) — sequences/email-calendar integration, Stage 3.
+export type CalendarSyncStatus = 'NOT_CONNECTED' | 'SYNCED' | 'FAILED';
+
 export interface Meeting {
   id: string;
   leadId: string;
@@ -132,6 +135,13 @@ export interface Meeting {
   outcome: string | null;
   timeZone: string | null;
   createdAt: string;
+  // Stage 3: calendar sync to the meeting's creator's own connected Google/Microsoft calendar
+  // (one-way, CRM → calendar). See lib/permissions.ts's SEQUENCES_MANAGE-adjacent comments and
+  // backend/src/utils/calendarSync.ts for the full design.
+  externalCalendarProvider: 'GOOGLE' | 'MICROSOFT' | null;
+  externalEventId: string | null;
+  calendarSyncStatus: CalendarSyncStatus;
+  calendarSyncError: string | null;
 }
 
 export interface Task {

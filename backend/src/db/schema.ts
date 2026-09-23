@@ -32,6 +32,12 @@ export const leadStatusEnum = pgEnum('lead_status', [
 export const leadPriorityEnum = pgEnum('lead_priority', ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']);
 export const meetingTypeEnum = pgEnum('meeting_type', ['DISCOVERY', 'DEMO', 'FOLLOW_UP', 'TECHNICAL', 'NEGOTIATION', 'CLOSING', 'OTHER']);
 export const meetingStatusEnum = pgEnum('meeting_status', ['SCHEDULED', 'COMPLETED', 'NO_SHOW', 'CANCELLED', 'RESCHEDULED']);
+// Phase 9 ("advanced CRM" slice) — sequences/email-calendar integration, Stage 3 (calendar sync,
+// on top of Stage 1's OAuth connections). NOT_CONNECTED covers both "the creator never connected a
+// provider" and "connected, but before the calendar scope existed" — both need the same reconnect
+// action, so they share one value rather than needing a caller to distinguish them (see
+// utils/calendarSync.ts).
+export const calendarSyncStatusEnum = pgEnum('calendar_sync_status', ['NOT_CONNECTED', 'SYNCED', 'FAILED']);
 export const taskStatusEnum = pgEnum('task_status', ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'OVERDUE', 'CANCELLED']);
 export const taskPriorityEnum = pgEnum('task_priority', ['LOW', 'MEDIUM', 'HIGH', 'URGENT']);
 export const documentTypeEnum = pgEnum('document_type', ['PROPOSAL', 'MOM', 'PRESENTATION', 'CONTRACT', 'BROCHURE', 'OTHER']);
@@ -845,6 +851,17 @@ export const meetings = pgTable(
     mom: text('mom'),
     outcome: text('outcome'),
     createdById: uuid('created_by_id').references(() => users.id),
+    // Phase 9 ("advanced CRM" slice) — sequences/email-calendar integration, Stage 3. Calendar
+    // identity always follows `createdById` (the meeting's calendar "owner"), never whoever
+    // happens to be editing it — mirrors sequences using `enrolledById`, not the current caller,
+    // as the sending identity. externalEventId/externalCalendarProvider are both null whenever
+    // calendarSyncStatus is NOT_CONNECTED or FAILED-without-a-prior-success; a FAILED *update* on
+    // an already-synced meeting keeps the old externalEventId (the event still exists out there,
+    // only our patch failed) — see utils/calendarSync.ts.
+    externalCalendarProvider: oauthProviderEnum('external_calendar_provider'),
+    externalEventId: varchar('external_event_id', { length: 255 }),
+    calendarSyncStatus: calendarSyncStatusEnum('calendar_sync_status').notNull().default('NOT_CONNECTED'),
+    calendarSyncError: text('calendar_sync_error'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },

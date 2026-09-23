@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Card, CardContent } from '@/components/ui/card';
-import { MeetingStatusBadge } from '@/components/shared/StatusBadge';
+import { MeetingStatusBadge, CalendarSyncIndicator } from '@/components/shared/StatusBadge';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { useCreateMeeting, useUpdateMeeting } from '@/api/meetings';
 import { apiErrorMessage } from '@/lib/api';
@@ -128,6 +128,7 @@ function MeetingCard({ meeting, editingMom, onToggleMom }: { meeting: Meeting; e
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <CalendarSyncIndicator status={meeting.calendarSyncStatus} provider={meeting.externalCalendarProvider} error={meeting.calendarSyncError} />
             <MeetingStatusBadge status={meeting.status} />
             <Select value={meeting.status} onValueChange={(status) => updateMeeting.mutate({ status })}>
               <SelectTrigger className="h-7 w-[130px] text-xs"><SelectValue /></SelectTrigger>
