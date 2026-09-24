@@ -4,8 +4,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
-import { useMutation } from '@tanstack/react-query';
-import { KeyRound, User, Shield, Building2, Mail, Send, Unlink, CalendarClock, RefreshCw, Plus, Trash2, Code2, Webhook, Copy, Check, ChevronDown, ChevronUp, Plug, Pencil, CreditCard } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { KeyRound, User, Shield, Building2, Mail, Send, Unlink, CalendarClock, RefreshCw, Plus, Trash2, Code2, Webhook, Copy, Check, ChevronDown, ChevronUp, Plug, Pencil, CreditCard, Monitor, LogOut } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -15,7 +15,8 @@ import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { changePasswordRequest } from '@/api/auth';
+import { EmptyState } from '@/components/shared/EmptyState';
+import { changePasswordRequest, listSessionsRequest, revokeSessionRequest, revokeOtherSessionsRequest } from '@/api/auth';
 import { useMyOrganization, useUpdateMyOrganization } from '@/api/organizations';
 import {
   useIntegrationsStatus,
@@ -55,7 +56,7 @@ import { Progress } from '@/components/ui/progress';
 import { useAuthStore } from '@/store/authStore';
 import { PERMISSIONS } from '@/lib/permissions';
 import { apiErrorMessage } from '@/lib/api';
-import { initials, humanizeEnum, cn } from '@/lib/utils';
+import { initials, humanizeEnum, cn, formatDateTime } from '@/lib/utils';
 
 const schema = z.object({
   currentPassword: z.string().min(1, 'Current password is required'),
@@ -159,10 +160,99 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      <SessionsCard />
+
       <p className="text-center text-xs text-muted-foreground">
         Need a new team member, role change, or password reset for someone else? Contact an Admin — self-service account creation within your organization is disabled by design.
       </p>
     </div>
+  );
+}
+
+// Phase 15 (security hardening) — session/device management. Visible to any authenticated user,
+// unconditionally, same "no permission gate — it's your own account" reasoning as
+// ConnectedAccountsCard/Change Password above: everything here (list/revoke/revoke-others) is
+// already scoped server-side to the caller's own userId (see backend/src/modules/auth/
+// auth.service.ts), so there's nothing left to additionally gate client-side.
+function SessionsCard() {
+  const qc = useQueryClient();
+  const { data: sessions, isLoading } = useQuery({ queryKey: ['auth', 'sessions'], queryFn: listSessionsRequest });
+  const revoke = useMutation({
+    mutationFn: revokeSessionRequest,
+    onSuccess: () => {
+      toast.success('Session signed out');
+      qc.invalidateQueries({ queryKey: ['auth', 'sessions'] });
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Failed to sign out that session')),
+  });
+  const revokeOthers = useMutation({
+    mutationFn: revokeOtherSessionsRequest,
+    onSuccess: (result) => {
+      toast.success(result.revokedCount > 0 ? `Signed out of ${result.revokedCount} other session(s)` : 'No other sessions to sign out of');
+      qc.invalidateQueries({ queryKey: ['auth', 'sessions'] });
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Failed to sign out other sessions')),
+  });
+
+  // "Other" here means everything except the row this browser's own request identified as
+  // `current` — never "everything but the most recently created row." Those aren't the same
+  // thing: e.g. after refreshing on a second device, that device's session is now the newest row,
+  // but THIS card, rendered in the FIRST device's browser, must still treat ITS OWN session as
+  // the one to keep — which is exactly what the `current` flag (computed server-side from the
+  // request's own refresh-token cookie, not from recency) guarantees.
+  const otherCount = sessions?.filter((s) => !s.current).length ?? 0;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><Monitor className="h-4 w-4" /> Active Sessions</CardTitle>
+        <CardDescription>Every device currently signed in as you. Don't recognize one? Sign it out.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {isLoading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-14 w-full" />
+            <Skeleton className="h-14 w-full" />
+          </div>
+        ) : !sessions || sessions.length === 0 ? (
+          <EmptyState title="No active sessions" description="This shouldn't happen while you're looking at this page — try refreshing." />
+        ) : (
+          <>
+            <div className="space-y-2">
+              {sessions.map((s) => (
+                <div key={s.id} className="flex items-center justify-between gap-3 rounded-xl border border-border/60 p-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-sm font-medium">{s.userAgent ?? 'Unknown device'}</p>
+                      {s.current && <Badge variant="outline">This device</Badge>}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {s.ipAddress ?? 'Unknown location'} · signed in {formatDateTime(s.createdAt)}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="shrink-0 gap-1 text-destructive hover:text-destructive"
+                    onClick={() => revoke.mutate(s.id)}
+                    loading={revoke.isPending}
+                  >
+                    <LogOut className="h-3.5 w-3.5" /> Sign out
+                  </Button>
+                </div>
+              ))}
+            </div>
+            {otherCount > 0 && (
+              <div className="flex justify-end">
+                <Button variant="outline" size="sm" onClick={() => revokeOthers.mutate()} loading={revokeOthers.isPending}>
+                  Sign out of {otherCount} other session{otherCount === 1 ? '' : 's'}
+                </Button>
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

@@ -51,6 +51,29 @@ export const changePassword = asyncHandler(async (req: Request, res: Response) =
   res.json({ success: true, message: 'Password updated successfully' });
 });
 
+// Phase 15 (security hardening) — session/device management. Every handler below reads the raw
+// refresh_token cookie itself (same REFRESH_COOKIE constant login/refresh/logout above use) only
+// to identify the CALLER's own current session among their own rows — never to authenticate the
+// request, which `authenticate` (see auth.routes.ts) has already done via the Bearer access
+// token. A caller with no refresh cookie at all (e.g. an access token used past its refresh
+// cookie's own lifetime) still gets a full session list back, just with no row flagged `current`.
+export const listSessions = asyncHandler(async (req: Request, res: Response) => {
+  const currentToken = req.cookies?.[REFRESH_COOKIE];
+  const sessions = await authService.listSessions(req.user!.sub, currentToken);
+  res.json({ success: true, data: sessions });
+});
+
+export const revokeSession = asyncHandler(async (req: Request, res: Response) => {
+  await authService.revokeSession(req, req.user!.sub, req.params.id);
+  res.json({ success: true, data: null });
+});
+
+export const revokeOtherSessions = asyncHandler(async (req: Request, res: Response) => {
+  const currentToken = req.cookies?.[REFRESH_COOKIE];
+  const result = await authService.revokeOtherSessions(req, req.user!.sub, currentToken);
+  res.json({ success: true, data: result });
+});
+
 // Phase 13 (super admin), slice 2. Only reachable with an impersonation token — see this route's
 // own comment in auth.routes.ts for why that's checked here rather than via requirePlatformAdmin
 // (an impersonation token deliberately never satisfies that gate).

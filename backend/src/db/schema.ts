@@ -61,6 +61,12 @@ export const auditActionEnum = pgEnum('audit_action', [
   // modules/platformAdmin/platformAdmin.service.ts's impersonateUser and
   // modules/auth/auth.service.ts's endImpersonation.
   'IMPERSONATION_START', 'IMPERSONATION_END',
+  // Phase 15 (security hardening) — session/device management (SESSION_REVOKED, when a user or
+  // an admin-triggered password change revokes a refresh_tokens row — see auth.service.ts's
+  // revokeSession/revokeOtherSessions) and account-lockout brute-force protection
+  // (ACCOUNT_LOCKED, logged once when failedLoginAttempts crosses the threshold, not on every
+  // subsequent failed attempt while already locked — see auth.service.ts's login()).
+  'SESSION_REVOKED', 'ACCOUNT_LOCKED',
 ]);
 // Phase 4: custom fields engine. `entityType` on custom_field_definitions is schema-generic
 // (varchar, not an enum limited to LEAD) so a future phase can extend to companies/contacts
@@ -190,6 +196,17 @@ export const users = pgTable(
     isPlatformAdmin: boolean('is_platform_admin').notNull().default(false),
     mustChangePassword: boolean('must_change_password').notNull().default(true),
     lastLoginAt: timestamp('last_login_at'),
+    // Phase 15 (security hardening) — account-level brute-force protection, layered on top of
+    // authLimiter's existing per-IP rate limit (middleware/rateLimiter.ts): that limiter can't
+    // stop a credential-stuffing attempt against ONE account spread across many IPs, since each
+    // IP gets its own budget. failedLoginAttempts increments on every wrong password and resets
+    // to 0 on a successful login (see auth.service.ts's login()); once it reaches
+    // MAX_FAILED_LOGIN_ATTEMPTS, lockedUntil is set and login() rejects — even with the correct
+    // password — until that timestamp passes, same "correct-password check still happens first"
+    // ordering as the organization-suspended check just below it, so a locked-out attacker
+    // learns nothing about whether their guessed password was actually right.
+    failedLoginAttempts: integer('failed_login_attempts').notNull().default(0),
+    lockedUntil: timestamp('locked_until'),
     createdById: uuid('created_by_id'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),

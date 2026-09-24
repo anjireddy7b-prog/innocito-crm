@@ -246,6 +246,13 @@
       "when": 1790218873168,
       "tag": "0034_ai_lead_insights",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1790235257818,
+      "tag": "0035_session_management_lockout",
+      "breakpoints": true
     }
   ]
 }

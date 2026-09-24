@@ -19,6 +19,13 @@ authRouter.post(
   controller.changePassword
 );
 
+// Phase 15 (security hardening) — session/device management. `authenticate` alone, same as /me:
+// every handler is scoped to req.user.sub (see auth.service.ts), so there's no separate
+// permission to gate — a caller can only ever see or revoke their OWN sessions.
+authRouter.get('/sessions', authenticate, controller.listSessions);
+authRouter.delete('/sessions/:id', authenticate, controller.revokeSession);
+authRouter.post('/sessions/revoke-others', authenticate, controller.revokeOtherSessions);
+
 // Phase 13 (super admin), slice 2. `authenticate` alone, never `requirePlatformAdmin` — that
 // middleware is never satisfied by an impersonation token by design (see utils/tokens.ts's
 // signImpersonationToken), and this route is only ever called WHILE impersonating (the frontend
