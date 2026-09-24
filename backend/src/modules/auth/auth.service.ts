@@ -13,7 +13,9 @@ import {
 } from '@/utils/tokens';
 import { recordAudit } from '@/utils/auditLogger';
 
-async function loadUserWithPermissions(userId: string) {
+// Exported so platformAdmin.service.ts's impersonateUser can load the target user with the exact
+// same role/permissions shape login() uses below, rather than duplicating this query.
+export async function loadUserWithPermissions(userId: string) {
   const user = await db.query.users.findFirst({
     where: eq(users.id, userId),
     with: { role: { with: { permissions: { with: { permission: true } } } }, organization: true },
@@ -151,6 +153,32 @@ export async function changePassword(req: Request, userId: string, currentPasswo
   await db.update(users).set({ passwordHash, mustChangePassword: false }).where(eq(users.id, userId));
   await db.update(refreshTokens).set({ revokedAt: new Date() }).where(eq(refreshTokens.userId, userId));
   await recordAudit({ req, action: 'PASSWORD_RESET', entityType: 'User', entityId: userId });
+}
+
+// Phase 13 (super admin), slice 2. Called with the CALLER's own req.user, which — because this
+// route is only ever reached with an impersonation token (see auth.routes.ts) — is the
+// impersonated user, not the platform admin who initiated it. `impersonation` is that token's own
+// `impersonation` claim (see utils/tokens.ts's AccessTokenPayload), carrying who to actually
+// credit. Nothing to undo server-side: the impersonation token was never backed by a refresh
+// token or any DB session row (see platformAdmin.service.ts's impersonateUser), so simply not
+// using it again ends it — this call exists purely to leave a clean END entry beside the START
+// one, so a review of either the impersonated user's or the platform admin's audit trail shows a
+// matched pair with a duration, not just a START that never explains when it stopped.
+export async function endImpersonation(
+  req: Request,
+  impersonatedUserId: string,
+  organizationId: string,
+  impersonation: { platformAdminId: string; platformAdminEmail: string }
+) {
+  await recordAudit({
+    req,
+    action: 'IMPERSONATION_END',
+    entityType: 'User',
+    entityId: impersonatedUserId,
+    organizationId,
+    userId: impersonation.platformAdminId,
+    newValues: { platformAdminEmail: impersonation.platformAdminEmail },
+  });
 }
 
 export { verifyAccessToken };

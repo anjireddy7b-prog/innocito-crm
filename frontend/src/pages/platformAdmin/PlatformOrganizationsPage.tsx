@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Eye } from 'lucide-react';
+import { Eye, UserRoundCheck, BarChart3 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { DataTable, DataTableColumn } from '@/components/shared/DataTable';
 import { Pagination } from '@/components/shared/Pagination';
@@ -14,11 +14,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { apiErrorMessage } from '@/lib/api';
 import { formatDate, formatDateTime, humanizeEnum } from '@/lib/utils';
+import { useAuthStore } from '@/store/authStore';
 import {
   usePlatformOrganizations,
   usePlatformOrganizationDetail,
   useSetPlatformOrganizationActive,
+  useImpersonateUser,
   PlatformOrganizationSummary,
+  PlatformOrganizationMember,
 } from '@/api/platformAdmin';
 
 // Phase 13 (super admin), slice 1. Only reachable by a caller with isPlatformAdmin — see
@@ -113,6 +116,13 @@ export default function PlatformOrganizationsPage() {
       <PageHeader
         title="Platform Admin"
         description="Every organization on this platform, across every tenant. Suspending an organization immediately blocks its members from logging in."
+        actions={
+          <Button variant="outline" asChild>
+            <Link to="/platform-admin/metrics">
+              <BarChart3 /> Metrics
+            </Link>
+          </Button>
+        }
       />
 
       <div className="flex flex-wrap items-center gap-2">
@@ -183,53 +193,99 @@ export default function PlatformOrganizationsPage() {
 
 function OrganizationDetailDialog({ orgId, onOpenChange }: { orgId: string | null; onOpenChange: (open: boolean) => void }) {
   const { data: org, isLoading } = usePlatformOrganizationDetail(orgId);
+  const impersonate = useImpersonateUser();
+  const startImpersonation = useAuthStore((s) => s.startImpersonation);
+  const navigate = useNavigate();
+  const [impersonateTarget, setImpersonateTarget] = useState<PlatformOrganizationMember | null>(null);
+
+  function confirmImpersonate() {
+    if (!impersonateTarget) return;
+    const target = impersonateTarget;
+    impersonate.mutate(target.id, {
+      onSuccess: (result) => {
+        startImpersonation(result.user, result.accessToken);
+        setImpersonateTarget(null);
+        onOpenChange(false);
+        toast.success(`Now viewing as ${target.firstName} ${target.lastName}`);
+        navigate('/dashboard');
+      },
+      onError: (err) => {
+        toast.error(apiErrorMessage(err, 'Failed to start impersonation'));
+        setImpersonateTarget(null);
+      },
+    });
+  }
 
   return (
-    <Dialog open={!!orgId} onOpenChange={onOpenChange}>
-      <DialogContent size="lg">
-        <DialogHeader>
-          <DialogTitle>{org?.name ?? 'Organization'}</DialogTitle>
-          <DialogDescription>
-            {org ? `${org.slug} · ${org.plan.name} plan · ${humanizeEnum(org.subscriptionStatus)} · created ${formatDate(org.createdAt)}` : 'Loading…'}
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={!!orgId} onOpenChange={onOpenChange}>
+        <DialogContent size="lg">
+          <DialogHeader>
+            <DialogTitle>{org?.name ?? 'Organization'}</DialogTitle>
+            <DialogDescription>
+              {org ? `${org.slug} · ${org.plan.name} plan · ${humanizeEnum(org.subscriptionStatus)} · created ${formatDate(org.createdAt)}` : 'Loading…'}
+            </DialogDescription>
+          </DialogHeader>
 
-        {!isLoading && org && (
-          <div className="space-y-3">
-            <div className="flex items-center gap-4 text-sm text-muted-foreground">
-              <span>{org.userCount} users</span>
-              <span>{org.leadCount} leads</span>
-              <Badge variant={org.isActive ? 'outline' : 'destructive'}>{org.isActive ? 'Active' : 'Suspended'}</Badge>
-            </div>
+          {!isLoading && org && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                <span>{org.userCount} users</span>
+                <span>{org.leadCount} leads</span>
+                <Badge variant={org.isActive ? 'outline' : 'destructive'}>{org.isActive ? 'Active' : 'Suspended'}</Badge>
+              </div>
 
-            <div className="overflow-hidden rounded-2xl border border-border/60">
-              <table className="w-full text-sm">
-                <thead className="bg-secondary/50 text-left text-xs uppercase text-muted-foreground">
-                  <tr>
-                    <th className="px-3 py-2">Member</th>
-                    <th className="px-3 py-2">Role</th>
-                    <th className="px-3 py-2">Last Login</th>
-                    <th className="px-3 py-2">Active</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {org.users.map((u) => (
-                    <tr key={u.id} className="border-t border-border/60">
-                      <td className="px-3 py-2">
-                        <p className="font-medium">{u.firstName} {u.lastName}</p>
-                        <p className="text-xs text-muted-foreground">{u.email}</p>
-                      </td>
-                      <td className="px-3 py-2">{u.role ? humanizeEnum(u.role.name) : '—'}</td>
-                      <td className="px-3 py-2">{formatDateTime(u.lastLoginAt)}</td>
-                      <td className="px-3 py-2">{u.isActive ? 'Yes' : 'No'}</td>
+              <div className="overflow-hidden rounded-2xl border border-border/60">
+                <table className="w-full text-sm">
+                  <thead className="bg-secondary/50 text-left text-xs uppercase text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2">Member</th>
+                      <th className="px-3 py-2">Role</th>
+                      <th className="px-3 py-2">Last Login</th>
+                      <th className="px-3 py-2">Active</th>
+                      <th className="px-3 py-2" />
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {org.users.map((u) => (
+                      <tr key={u.id} className="border-t border-border/60">
+                        <td className="px-3 py-2">
+                          <p className="font-medium">{u.firstName} {u.lastName}</p>
+                          <p className="text-xs text-muted-foreground">{u.email}</p>
+                        </td>
+                        <td className="px-3 py-2">{u.role ? humanizeEnum(u.role.name) : '—'}</td>
+                        <td className="px-3 py-2">{formatDateTime(u.lastLoginAt)}</td>
+                        <td className="px-3 py-2">{u.isActive ? 'Yes' : 'No'}</td>
+                        <td className="px-3 py-2 text-right">
+                          {/* Phase 13 (super admin), slice 2. Hidden for a disabled or platform-admin
+                              row — the backend independently re-checks both regardless (see
+                              platformAdmin.service.ts's impersonateUser), this just avoids offering an
+                              action that would only come back as an error. */}
+                          {u.isActive && !u.isPlatformAdmin && (
+                            <Button variant="ghost" size="sm" className="gap-1" onClick={() => setImpersonateTarget(u)}>
+                              <UserRoundCheck className="h-3.5 w-3.5" /> Impersonate
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={!!impersonateTarget}
+        onOpenChange={(o) => !o && setImpersonateTarget(null)}
+        title={`Impersonate ${impersonateTarget?.firstName} ${impersonateTarget?.lastName}?`}
+        description="You'll see the app exactly as this user does, with their own permissions — for support and debugging. This is logged and expires automatically after 30 minutes; you can also exit anytime via the banner at the top of the screen."
+        confirmLabel="Start Impersonating"
+        loading={impersonate.isPending}
+        onConfirm={confirmImpersonate}
+      />
+    </>
   );
 }

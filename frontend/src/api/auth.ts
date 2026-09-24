@@ -24,3 +24,11 @@ export async function changePasswordRequest(currentPassword: string, newPassword
   const res = await api.post<ApiEnvelope<null>>('/auth/change-password', { currentPassword, newPassword });
   return res.data;
 }
+
+// Phase 13 (super admin), slice 2. Purely for the audit trail (see
+// backend/src/modules/auth/auth.service.ts's endImpersonation) — the client already restores the
+// platform admin's own session locally via authStore's endImpersonation regardless of whether
+// this call succeeds, so it's fired-and-awaited but never blocks or gates that restore.
+export async function endImpersonationRequest() {
+  await api.post('/auth/end-impersonation');
+}

@@ -45,6 +45,20 @@ api.interceptors.response.use(
     const original = error.config as (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined;
     const isAuthRoute = original?.url?.includes('/auth/login') || original?.url?.includes('/auth/refresh');
 
+    // Phase 13 (super admin), slice 2 — user impersonation. An impersonation token has no refresh
+    // token behind it at all (see backend/src/utils/tokens.ts's signImpersonationToken) — the
+    // cookie in the browser right now is still the PLATFORM ADMIN's own. Falling through to the
+    // ordinary refresh flow below would silently mint a new ADMIN access token and swap it in here,
+    // which would look exactly like the current request just working, except the caller is now
+    // back to being the admin without any indication the impersonation session ended. Ending it
+    // explicitly and rejecting is the safe behavior: the caller sees a failed request (React Query
+    // surfaces this as an error) and the impersonation banner disappears, rather than staying up
+    // while showing the platform admin's own data underneath it.
+    if (error.response?.status === 401 && useAuthStore.getState().isImpersonating) {
+      useAuthStore.getState().endImpersonation();
+      return Promise.reject(error);
+    }
+
     if (error.response?.status === 401 && original && !original._retry && !isAuthRoute) {
       original._retry = true;
       refreshPromise ??= refreshAccessToken().finally(() => {

@@ -18,3 +18,10 @@ authRouter.post(
   validate(changePasswordSchema),
   controller.changePassword
 );
+
+// Phase 13 (super admin), slice 2. `authenticate` alone, never `requirePlatformAdmin` — that
+// middleware is never satisfied by an impersonation token by design (see utils/tokens.ts's
+// signImpersonationToken), and this route is only ever called WHILE impersonating (the frontend
+// still holds the platform admin's own token in memory and needs no elevated route to restore
+// it). The controller itself rejects any call whose token lacks an `impersonation` claim.
+authRouter.post('/end-impersonation', authenticate, controller.endImpersonation);

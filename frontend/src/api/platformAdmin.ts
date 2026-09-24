@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiEnvelope } from '@/lib/api';
+import type { AuthUser } from '@/store/authStore';
 
 // Phase 13 (super admin), slice 1 — organization management console. Mirrors backend/src/modules/
 // platformAdmin/* exactly: /platform-admin/organizations (list, with usage/plan enrichment per
@@ -27,6 +28,10 @@ export interface PlatformOrganizationMember {
   firstName: string;
   lastName: string;
   isActive: boolean;
+  // Phase 13 (super admin), slice 2 — used only to hide the Impersonate action on a platform
+  // admin's own row (see PlatformOrganizationsPage.tsx); the backend independently re-checks this
+  // regardless of what the UI shows (platformAdmin.service.ts's impersonateUser).
+  isPlatformAdmin: boolean;
   lastLoginAt: string | null;
   createdAt: string;
   role: { name: string } | null;
@@ -69,5 +74,41 @@ export function useSetPlatformOrganizationActive() {
       return res.data.data;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['platformAdmin', 'organizations'] }),
+  });
+}
+
+// Phase 13 (super admin), slice 2 — user impersonation. Returns the impersonated user's own
+// {accessToken, user}, same shape loginRequest returns — the caller (PlatformOrganizationsPage)
+// hands both straight to authStore's startImpersonation.
+export function useImpersonateUser() {
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      const res = await api.post<ApiEnvelope<{ accessToken: string; user: AuthUser }>>(`/platform-admin/users/${userId}/impersonate`, {});
+      return res.data.data;
+    },
+  });
+}
+
+// Phase 13 (super admin), slice 3 — platform-wide metrics.
+export interface PlatformMetrics {
+  totals: {
+    organizations: number;
+    activeOrganizations: number;
+    suspendedOrganizations: number;
+    users: number;
+    leads: number;
+  };
+  organizationsByPlan: { planId: string; planName: string; count: number }[];
+  signupTrend: { month: string; count: number }[];
+}
+
+export function usePlatformMetrics() {
+  return useQuery({
+    queryKey: ['platformAdmin', 'metrics'],
+    queryFn: async () => {
+      const res = await api.get<ApiEnvelope<PlatformMetrics>>('/platform-admin/metrics');
+      return res.data.data;
+    },
+    staleTime: 30_000,
   });
 }

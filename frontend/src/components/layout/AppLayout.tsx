@@ -1,10 +1,12 @@
 import { Outlet } from 'react-router-dom';
 import { TopNav } from '@/components/layout/TopNav';
 import { Sidebar } from '@/components/layout/Sidebar';
+import { ImpersonationBanner } from '@/components/layout/ImpersonationBanner';
 
 export function AppLayout() {
   return (
     <div className="flex h-screen flex-col bg-background">
+      <ImpersonationBanner />
       <TopNav />
       <div className="flex flex-1 overflow-hidden bg-background">
         <Sidebar />

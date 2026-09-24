@@ -50,3 +50,12 @@ export const changePassword = asyncHandler(async (req: Request, res: Response) =
   await authService.changePassword(req, req.user!.sub, currentPassword, newPassword);
   res.json({ success: true, message: 'Password updated successfully' });
 });
+
+// Phase 13 (super admin), slice 2. Only reachable with an impersonation token — see this route's
+// own comment in auth.routes.ts for why that's checked here rather than via requirePlatformAdmin
+// (an impersonation token deliberately never satisfies that gate).
+export const endImpersonation = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user?.impersonation) throw ApiError.forbidden('Not an impersonation session');
+  await authService.endImpersonation(req, req.user.sub, req.user.organizationId, req.user.impersonation);
+  res.json({ success: true, data: null });
+});

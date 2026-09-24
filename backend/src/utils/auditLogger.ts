@@ -17,6 +17,13 @@ interface AuditParams {
   // rather than coming from an already-verified access token. Falls back to the authenticated
   // caller's own org otherwise.
   organizationId?: string | null;
+  // Phase 13 (super admin), slice 2 — override for the one case where "who did this" is NOT
+  // req.user.sub: ending an impersonation session. That request is authenticated with the
+  // impersonation token, so req.user.sub is the IMPERSONATED user, not the platform admin who
+  // actually clicked "exit" — see auth.service.ts's endImpersonation, which passes
+  // req.user.impersonation.platformAdminId here so the audit entry attributes the action to the
+  // real actor rather than the person being watched.
+  userId?: string;
 }
 
 /**
@@ -25,7 +32,7 @@ interface AuditParams {
  * login, role change, assignment change, status change, export...).
  * Never throws — audit logging failures must not break the primary request.
  */
-export async function recordAudit({ req, action, entityType, entityId, oldValues, newValues, organizationId }: AuditParams) {
+export async function recordAudit({ req, action, entityType, entityId, oldValues, newValues, organizationId, userId }: AuditParams) {
   try {
     await db.insert(auditLogs).values({
       // Explicit override (auth.service.ts, where the org is known from a DB lookup before
@@ -34,7 +41,9 @@ export async function recordAudit({ req, action, entityType, entityId, oldValues
       // yet — organizationId stays null rather than guessing, which is why this column alone is
       // nullable (see db/schema.ts).
       organizationId: organizationId ?? req.user?.organizationId,
-      userId: req.user?.sub,
+      // Explicit override (endImpersonation, see this param's own comment) wins; otherwise the
+      // signed access token's own subject, exactly as before.
+      userId: userId ?? req.user?.sub,
       action,
       entityType,
       entityId,

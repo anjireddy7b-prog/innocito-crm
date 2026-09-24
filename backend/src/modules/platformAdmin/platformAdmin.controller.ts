@@ -14,3 +14,11 @@ export const getById = asyncHandler(async (req: Request, res: Response) => {
 export const setActive = asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data: await service.setOrganizationActive(req, req.params.id, req.body.isActive) });
 });
+
+export const impersonate = asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await service.impersonateUser(req, req.params.userId) });
+});
+
+export const metrics = asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await service.getPlatformMetrics() });
+});

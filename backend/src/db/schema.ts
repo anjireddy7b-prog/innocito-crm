@@ -55,6 +55,12 @@ export const auditActionEnum = pgEnum('audit_action', [
   'ROLE_CHANGED', 'STATUS_CHANGED', 'ASSIGNMENT_CHANGED', 'EXPORT', 'EMAIL_CHANGED',
   // Phase 9: duplicate-detection merge (companies/contacts) — see modules/duplicates/duplicates.service.ts.
   'MERGE',
+  // Phase 13 (super admin), slice 2 — user impersonation. Logged as its own pair of actions
+  // (never folded into LOGIN/LOGOUT) so a review of a user's audit trail can tell "they logged in
+  // themselves" apart from "a platform admin was viewing the app as them" at a glance — see
+  // modules/platformAdmin/platformAdmin.service.ts's impersonateUser and
+  // modules/auth/auth.service.ts's endImpersonation.
+  'IMPERSONATION_START', 'IMPERSONATION_END',
 ]);
 // Phase 4: custom fields engine. `entityType` on custom_field_definitions is schema-generic
 // (varchar, not an enum limited to LEAD) so a future phase can extend to companies/contacts

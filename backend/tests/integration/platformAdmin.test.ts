@@ -2,9 +2,9 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import request from 'supertest';
 import { eq } from 'drizzle-orm';
 import { db } from '@/config/db';
-import { organizations } from '@/db/schema';
+import { organizations, users, auditLogs } from '@/db/schema';
 import { createApp } from '@/app';
-import { TEST_ADMIN, TEST_PLATFORM_ADMIN, TEST_ORG_B_ADMIN, primaryOrgId, secondaryOrgId } from '../setup';
+import { TEST_ADMIN, TEST_INSIDE_SALES, TEST_PLATFORM_ADMIN, TEST_ORG_B_ADMIN, primaryOrgId, secondaryOrgId } from '../setup';
 
 // Phase 13 (super admin), slice 1 — organization management console. Covers: only isPlatformAdmin
 // (never an ordinary ADMIN, however permissioned) can reach these routes; the console genuinely
@@ -132,5 +132,116 @@ describe('PATCH /api/platform-admin/organizations/:id/active — suspend/reactiv
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ isActive: false });
     expect(res.status).toBe(403);
+  });
+});
+
+// Phase 13 (super admin), slice 2 — user impersonation.
+describe('POST /api/platform-admin/users/:userId/impersonate', () => {
+  it('an ordinary organization Admin cannot impersonate anyone', async () => {
+    const target = await db.query.users.findFirst({ where: eq(users.email, TEST_INSIDE_SALES.email) });
+    const res = await request(app)
+      .post(`/api/platform-admin/users/${target!.id}/impersonate`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(403);
+  });
+
+  it('cannot impersonate a disabled user', async () => {
+    const target = await db.query.users.findFirst({ where: eq(users.email, TEST_INSIDE_SALES.email) });
+    await db.update(users).set({ isActive: false }).where(eq(users.id, target!.id));
+
+    const res = await request(app)
+      .post(`/api/platform-admin/users/${target!.id}/impersonate`)
+      .set('Authorization', `Bearer ${platformAdminToken}`);
+    expect(res.status).toBe(400);
+
+    // Restore, so this doesn't leak into any other test.
+    await db.update(users).set({ isActive: true }).where(eq(users.id, target!.id));
+  });
+
+  it('cannot impersonate another platform admin', async () => {
+    const target = await db.query.users.findFirst({ where: eq(users.email, TEST_PLATFORM_ADMIN.email) });
+    const res = await request(app)
+      .post(`/api/platform-admin/users/${target!.id}/impersonate`)
+      .set('Authorization', `Bearer ${platformAdminToken}`);
+    expect(res.status).toBe(400);
+  });
+
+  it('mints a working token for the target user, scoped so it can never reach the platform admin console', async () => {
+    const target = await db.query.users.findFirst({ where: eq(users.email, TEST_INSIDE_SALES.email) });
+    const platformAdmin = await db.query.users.findFirst({ where: eq(users.email, TEST_PLATFORM_ADMIN.email) });
+
+    const impersonateRes = await request(app)
+      .post(`/api/platform-admin/users/${target!.id}/impersonate`)
+      .set('Authorization', `Bearer ${platformAdminToken}`);
+    expect(impersonateRes.status).toBe(200);
+    expect(impersonateRes.body.data.user.email).toBe(TEST_INSIDE_SALES.email);
+    const impersonationToken = impersonateRes.body.data.accessToken;
+
+    // Works as an ordinary, org-scoped session — same permissions the real user would have.
+    const leadsRes = await request(app).get('/api/leads').set('Authorization', `Bearer ${impersonationToken}`);
+    expect(leadsRes.status).toBe(200);
+
+    // But can never reach the platform admin console itself, even though a real INSIDE_SALES
+    // token obviously couldn't either — this specifically proves the token's own isPlatformAdmin
+    // claim was forced to false rather than inherited from anything.
+    const platformAdminRes = await request(app)
+      .get('/api/platform-admin/organizations')
+      .set('Authorization', `Bearer ${impersonationToken}`);
+    expect(platformAdminRes.status).toBe(403);
+
+    // The START event is attributed to the platform admin who initiated it, not the target.
+    const startLog = await db.query.auditLogs.findFirst({
+      where: eq(auditLogs.entityId, target!.id),
+      orderBy: (t, { desc }) => desc(t.createdAt),
+    });
+    expect(startLog?.action).toBe('IMPERSONATION_START');
+    expect(startLog?.userId).toBe(platformAdmin!.id);
+
+    // Ending it is only possible from inside the impersonation session itself, and attributes the
+    // END event to the platform admin too (read off the token's own impersonation claim), not to
+    // whichever user happens to be sitting in req.user.sub at that moment.
+    const endRes = await request(app).post('/api/auth/end-impersonation').set('Authorization', `Bearer ${impersonationToken}`);
+    expect(endRes.status).toBe(200);
+
+    const endLog = await db.query.auditLogs.findFirst({
+      where: eq(auditLogs.entityId, target!.id),
+      orderBy: (t, { desc }) => desc(t.createdAt),
+    });
+    expect(endLog?.action).toBe('IMPERSONATION_END');
+    expect(endLog?.userId).toBe(platformAdmin!.id);
+
+    // A real (non-impersonation) token can never call this — the impersonation-only gate.
+    const endWithRealTokenRes = await request(app).post('/api/auth/end-impersonation').set('Authorization', `Bearer ${adminToken}`);
+    expect(endWithRealTokenRes.status).toBe(403);
+  });
+});
+
+// Phase 13 (super admin), slice 3 — platform-wide metrics.
+describe('GET /api/platform-admin/metrics', () => {
+  it('an ordinary organization Admin cannot see platform-wide metrics', async () => {
+    const res = await request(app).get('/api/platform-admin/metrics').set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(403);
+  });
+
+  it('reports platform-wide totals, plan breakdown, and a signup trend', async () => {
+    const res = await request(app).get('/api/platform-admin/metrics').set('Authorization', `Bearer ${platformAdminToken}`);
+    expect(res.status).toBe(200);
+
+    const { totals, organizationsByPlan, signupTrend } = res.body.data;
+    // At least the 3 seeded organizations (Test Org, Other Tenant, Internal Ops).
+    expect(totals.organizations).toBeGreaterThanOrEqual(3);
+    expect(totals.activeOrganizations + totals.suspendedOrganizations).toBe(totals.organizations);
+    expect(totals.users).toBeGreaterThanOrEqual(5);
+
+    expect(organizationsByPlan.map((p: any) => p.planId).sort()).toEqual(['ENTERPRISE', 'FREE', 'PRO']);
+    const freeRow = organizationsByPlan.find((p: any) => p.planId === 'FREE');
+    // All 3 seeded organizations default to FREE — no billing.test.ts fixture upgrades them.
+    expect(freeRow.count).toBeGreaterThanOrEqual(3);
+
+    expect(Array.isArray(signupTrend)).toBe(true);
+    signupTrend.forEach((row: any) => {
+      expect(row).toHaveProperty('month');
+      expect(row).toHaveProperty('count');
+    });
   });
 });

@@ -17,3 +17,11 @@ platformAdminRouter.use(requirePlatformAdmin);
 platformAdminRouter.get('/organizations', validate(listOrganizationsQuerySchema, 'query'), controller.list);
 platformAdminRouter.get('/organizations/:id', controller.getById);
 platformAdminRouter.patch('/organizations/:id/active', validate(setOrganizationActiveSchema), controller.setActive);
+
+// Phase 13 (super admin), slice 2 — user impersonation. No request body: there's nothing to
+// validate beyond the :userId in the path, which impersonateUser itself checks (exists, active,
+// not another platform admin) before minting anything.
+platformAdminRouter.post('/users/:userId/impersonate', controller.impersonate);
+
+// Phase 13 (super admin), slice 3 — platform-wide metrics.
+platformAdminRouter.get('/metrics', controller.metrics);

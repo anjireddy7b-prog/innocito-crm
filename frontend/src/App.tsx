@@ -36,8 +36,9 @@ const CustomizationPage = lazy(() => import('@/pages/customization/Customization
 const CustomObjectDetailPage = lazy(() => import('@/pages/customObjects/CustomObjectDetailPage'));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
 const AuditLogsPage = lazy(() => import('@/pages/AuditLogsPage'));
-// Phase 13 (super admin), slice 1.
+// Phase 13 (super admin), slice 1 / slice 3.
 const PlatformOrganizationsPage = lazy(() => import('@/pages/platformAdmin/PlatformOrganizationsPage'));
+const PlatformMetricsPage = lazy(() => import('@/pages/platformAdmin/PlatformMetricsPage'));
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'));
 
 function PageFallback() {
@@ -191,6 +192,15 @@ export default function App() {
               // this is gated on the raw isPlatformAdmin flag rather than a RequirePermission call.
               <RequirePlatformAdmin>
                 <PlatformOrganizationsPage />
+              </RequirePlatformAdmin>
+            }
+          />
+          <Route
+            path="/platform-admin/metrics"
+            element={
+              // Phase 13 (super admin), slice 3 — same guard as the organizations console above.
+              <RequirePlatformAdmin>
+                <PlatformMetricsPage />
               </RequirePlatformAdmin>
             }
           />
