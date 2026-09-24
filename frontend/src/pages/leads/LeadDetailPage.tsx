@@ -2,24 +2,26 @@ import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
-  ArrowLeft, Building2, Mail, Phone, Briefcase, Globe2, UserCog, Trash2, Pencil, Users2,
+  ArrowLeft, Building2, Mail, Phone, Briefcase, Globe2, UserCog, Trash2, Pencil, Users2, Sparkles, RefreshCw,
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { LeadStatusBadge, PriorityBadge } from '@/components/shared/StatusBadge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { useLead, useChangeLeadStatus, useDeleteLead } from '@/api/leads';
 import { useCustomFieldDefinitions } from '@/api/customFields';
+import { useGenerateLeadInsights } from '@/api/ai';
 import { useAuthStore } from '@/store/authStore';
 import { PERMISSIONS } from '@/lib/permissions';
 import { apiErrorMessage } from '@/lib/api';
-import { formatCurrency, formatDate, humanizeEnum } from '@/lib/utils';
-import { LEAD_STATUSES } from '@/types';
+import { formatCurrency, formatDate, formatDateTime, humanizeEnum } from '@/lib/utils';
+import { LEAD_STATUSES, Lead } from '@/types';
 import { AssignLeadDialog } from '@/pages/leads/AssignLeadDialog';
 import { LeadEditPanel } from '@/pages/leads/LeadEditPanel';
 import { TimelineTab } from '@/pages/leads/tabs/TimelineTab';
@@ -39,6 +41,9 @@ export default function LeadDetailPage() {
   // Phase 4: field labels/order for whatever this lead's customFields bag holds — fetched
   // unconditionally (before the loading early-return below) since hooks can't be conditional.
   const { data: customFieldDefinitions } = useCustomFieldDefinitions('LEAD');
+  // Phase 14 (AI) — see AiInsightsCard below. Fetched unconditionally for the same
+  // hooks-can't-be-conditional reason as customFieldDefinitions above.
+  const generateInsights = useGenerateLeadInsights(id!);
 
   const [assignOpen, setAssignOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -175,6 +180,10 @@ export default function LeadDetailPage() {
             </CardContent>
           </Card>
 
+          {hasPermission(PERMISSIONS.AI_FEATURES_USE) && (
+            <AiInsightsCard lead={lead} generateInsights={generateInsights} />
+          )}
+
           {(lead.emailResponse || lead.nextSteps || lead.mom) && (
             <Card>
               <CardHeader><CardTitle>Legacy Notes</CardTitle></CardHeader>
@@ -255,5 +264,69 @@ export default function LeadDetailPage() {
         }
       />
     </div>
+  );
+}
+
+// Phase 14 (AI) — lead summary/next-step/score, generated together by one call (see api/ai.ts's
+// useGenerateLeadInsights). Only ever rendered when the caller holds AI_FEATURES_USE (checked by
+// LeadDetailPage above) — the backend re-checks the same permission independently regardless.
+function AiInsightsCard({
+  lead,
+  generateInsights,
+}: {
+  lead: Lead;
+  generateInsights: ReturnType<typeof useGenerateLeadInsights>;
+}) {
+  const hasInsights = !!lead.aiInsightsGeneratedAt;
+
+  function handleGenerate() {
+    generateInsights.mutate(undefined, {
+      onSuccess: () => toast.success('AI insights updated'),
+      onError: (err) => toast.error(apiErrorMessage(err, 'Failed to generate AI insights')),
+    });
+  }
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
+        <CardTitle className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-primary" /> AI Insights
+        </CardTitle>
+        <Button variant="ghost" size="sm" className="gap-1" onClick={handleGenerate} loading={generateInsights.isPending}>
+          <RefreshCw className="h-3.5 w-3.5" /> {hasInsights ? 'Refresh' : 'Generate'}
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        {!hasInsights && !generateInsights.isPending && (
+          <p className="text-muted-foreground">No AI insights generated yet for this lead.</p>
+        )}
+        {(hasInsights || generateInsights.isPending) && (
+          <>
+            <div>
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-xs font-medium text-muted-foreground">Conversion Likelihood</span>
+                <span className="font-medium">{lead.aiScore ?? '—'}%</span>
+              </div>
+              <Progress value={lead.aiScore ?? 0} />
+            </div>
+            {lead.aiSummary && (
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">Summary</p>
+                <p className="whitespace-pre-wrap">{lead.aiSummary}</p>
+              </div>
+            )}
+            {lead.aiNextStep && (
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">Suggested Next Step</p>
+                <p className="whitespace-pre-wrap">{lead.aiNextStep}</p>
+              </div>
+            )}
+            {lead.aiInsightsGeneratedAt && (
+              <p className="text-xs text-muted-foreground">Generated {formatDateTime(lead.aiInsightsGeneratedAt)}</p>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }

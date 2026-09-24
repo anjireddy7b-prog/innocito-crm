@@ -99,6 +99,13 @@ export interface Lead {
   emailResponse: string | null;
   mom: string | null;
   nextSteps: string | null;
+  // Phase 14 (AI) — generated together by one POST /ai/leads/:id/insights call (see api/ai.ts),
+  // never individually. aiInsightsGeneratedAt null means insights have never been generated for
+  // this lead; it also doubles as the staleness timestamp shown next to them once they have.
+  aiSummary: string | null;
+  aiNextStep: string | null;
+  aiScore: number | null;
+  aiInsightsGeneratedAt: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;

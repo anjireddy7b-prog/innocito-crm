@@ -31,7 +31,17 @@ const STATUS_OPTIONS: SequenceStatus[] = ['DRAFT', 'ACTIVE', 'ARCHIVED'];
 // status restriction on adding/editing/moving/deleting a step (see sequences.service.ts); the
 // only guard is deleteStep refusing to remove a step an in-flight enrollment currently points to,
 // which surfaces as a toast error from the mutation itself.
-function StepsSection({ sequenceId, steps, canManage }: { sequenceId: string; steps: SequenceStep[]; canManage: boolean }) {
+function StepsSection({
+  sequenceId,
+  sequenceName,
+  steps,
+  canManage,
+}: {
+  sequenceId: string;
+  sequenceName: string;
+  steps: SequenceStep[];
+  canManage: boolean;
+}) {
   const deleteStep = useDeleteStep(sequenceId);
   const moveStep = useMoveStep(sequenceId);
   const [formOpen, setFormOpen] = useState(false);
@@ -98,6 +108,7 @@ function StepsSection({ sequenceId, steps, canManage }: { sequenceId: string; st
 
       <SequenceStepFormDialog
         sequenceId={sequenceId}
+        sequenceName={sequenceName}
         step={editingStep}
         stepNumber={editingStep ? steps.findIndex((s) => s.id === editingStep.id) + 1 : steps.length + 1}
         open={formOpen}
@@ -316,7 +327,7 @@ export default function SequenceDetailPage() {
         </div>
 
         <div className="space-y-5 lg:col-span-2">
-          <StepsSection sequenceId={sequence.id} steps={steps} canManage={canManage} />
+          <StepsSection sequenceId={sequence.id} sequenceName={sequence.name} steps={steps} canManage={canManage} />
           <EnrollmentsSection sequenceId={sequence.id} canManage={canManage} canEnroll={sequence.status === 'ACTIVE'} />
         </div>
       </div>

@@ -87,6 +87,13 @@ const envSchema = z.object({
   // in-app action: granting platform-wide, cross-tenant access is an operator decision made by
   // editing this env var and redeploying, never a button any organization's own Admin can reach.
   PLATFORM_ADMIN_EMAILS: z.string().optional(),
+
+  // Phase 14 (AI). Optional, same on/off-switch pattern as STRIPE_SECRET_KEY above — nothing in
+  // utils/aiClient.ts or modules/ai/* is touched unless this is set (see aiEnabled below); without
+  // it every AI endpoint returns a clear "not configured" 400 instead of a crash. A single key
+  // covers all four Phase 14 capabilities (lead insights, email drafting, lead scoring, and the
+  // conversational assistant) — they all go through the one lazy client in utils/aiClient.ts.
+  ANTHROPIC_API_KEY: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -117,3 +124,5 @@ export const microsoftOAuthEnabled =
 // modules/billing/billing.service.ts. Doesn't require STRIPE_WEBHOOK_SECRET on its own (checkout/
 // portal creation don't need it), but the webhook route itself refuses to verify anything without it.
 export const billingEnabled = !!env.STRIPE_SECRET_KEY;
+// True once a real Anthropic API key is configured — see utils/aiClient.ts and modules/ai/*.
+export const aiEnabled = !!env.ANTHROPIC_API_KEY;

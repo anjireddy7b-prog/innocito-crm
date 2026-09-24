@@ -53,4 +53,7 @@ export const PERMISSIONS = {
   CONNECTORS_MANAGE: 'connectors:manage',
   // Phase 12 (billing/subscriptions) — mirrors backend/src/utils/permissions.ts.
   BILLING_MANAGE: 'billing:manage',
+  // Phase 14 (AI) — mirrors backend/src/utils/permissions.ts. Broadly granted (not admin-gated),
+  // see that file's own comment for why.
+  AI_FEATURES_USE: 'ai:use',
 } as const;

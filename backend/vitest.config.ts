@@ -37,6 +37,12 @@ export default defineConfig({
       STRIPE_WEBHOOK_SECRET: 'whsec_dummy_not_a_real_secret',
       STRIPE_PRO_PRICE_ID: 'price_dummy_pro',
       STRIPE_ENTERPRISE_PRICE_ID: 'price_dummy_enterprise',
+      // Phase 14 (AI). Dummy value (never a real Anthropic key) set globally so aiEnabled is true
+      // in every test file by default — same pattern as STRIPE_SECRET_KEY above. ai.test.ts then
+      // mocks the `@anthropic-ai/sdk` package itself to exercise the "configured" path;
+      // aiDisabledGate.test.ts is the one isolated exception, mocking '@/config/env' to flip
+      // aiEnabled back to false.
+      ANTHROPIC_API_KEY: 'sk-ant-dummy-not-a-real-key',
     },
   },
   resolve: {

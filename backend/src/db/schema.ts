@@ -582,6 +582,17 @@ export const leads = pgTable(
     mom: text('mom'),
     nextSteps: text('next_steps'),
 
+    // Phase 14 (AI): generated together in one combined call (see modules/ai/ai.service.ts's
+    // generateLeadInsights) — never written individually. Deliberately distinct columns from the
+    // pre-existing manual `nextSteps` above: that one is a rep's own free-text note, this is the
+    // model's own suggestion, and the two must never silently overwrite each other. All four are
+    // nullable and start unset; aiInsightsGeneratedAt doubles as "has this ever been generated"
+    // (null = never) and as the staleness timestamp shown next to it in the UI.
+    aiSummary: text('ai_summary'),
+    aiNextStep: text('ai_next_step'),
+    aiScore: integer('ai_score'),
+    aiInsightsGeneratedAt: timestamp('ai_insights_generated_at'),
+
     // Date the lead was received (defaults to today at creation, editable afterward
     // by anyone with edit rights on the lead — separate from createdAt, which is a
     // pure system audit timestamp and should never be hand-edited).

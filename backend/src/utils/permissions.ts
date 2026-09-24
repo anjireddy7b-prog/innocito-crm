@@ -113,6 +113,15 @@ export const PERMISSIONS = {
   // system-wide constraint checked in users.service.ts/leads.service.ts regardless of who's
   // creating the row; this permission only covers looking at and changing billing itself.
   BILLING_MANAGE: 'billing:manage',
+  // Phase 14 (AI): use any AI feature — generating lead insights/scoring, drafting sequence
+  // step copy, or the conversational assistant. Unlike every other permission added since Phase
+  // 11, this is deliberately NOT an admin-gated infrastructure permission — it's a broad
+  // productivity feature granted by default to every day-to-day working role (see
+  // ROLE_PERMISSIONS below), same tier as SEQUENCES_MANAGE/CASES_MANAGE. Gates the AI endpoints
+  // themselves (see modules/ai/ai.routes.ts); individual endpoints still layer their own
+  // existing data-access permission on top (e.g. LEADS_VIEW for insights) so this alone never
+  // grants access to data the caller couldn't already see.
+  AI_FEATURES_USE: 'ai:use',
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -141,6 +150,9 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     // Phase 9, Stage 2: INSIDE_SALES runs first-touch outreach cadences — the primary audience
     // for sequences.
     PERMISSIONS.SEQUENCES_MANAGE,
+    // Phase 14 (AI): a broad productivity feature, not admin-gated — see this permission's own
+    // comment above.
+    PERMISSIONS.AI_FEATURES_USE,
   ],
   SALES: [
     PERMISSIONS.LEADS_VIEW,
@@ -155,6 +167,7 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     PERMISSIONS.KNOWLEDGE_BASE_MANAGE,
     // Phase 9, Stage 2: SALES also runs follow-up cadences on leads already in their pipeline.
     PERMISSIONS.SEQUENCES_MANAGE,
+    PERMISSIONS.AI_FEATURES_USE,
   ],
   DELIVERY: [
     PERMISSIONS.LEADS_VIEW,
@@ -172,6 +185,7 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     // deliberately does NOT hold either).
     PERMISSIONS.CASES_MANAGE,
     PERMISSIONS.KNOWLEDGE_BASE_MANAGE,
+    PERMISSIONS.AI_FEATURES_USE,
   ],
   MANAGEMENT: [
     PERMISSIONS.LEADS_VIEW,
@@ -186,6 +200,7 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     // Phase 10, slice 1: MANAGEMENT is the cross-team reporting/analytics role (see its
     // description below) — same rationale as it already holding SAVED_VIEWS_MANAGE_SHARED.
     PERMISSIONS.REPORTS_MANAGE_SHARED,
+    PERMISSIONS.AI_FEATURES_USE,
   ],
 };
 
@@ -235,6 +250,7 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionKey, string> = {
   [PERMISSIONS.WEBHOOKS_MANAGE]: 'Register, pause/resume, and delete outbound webhook endpoints; view their delivery history',
   [PERMISSIONS.CONNECTORS_MANAGE]: 'Register, edit, and delete third-party connector instances (Slack, HubSpot, Zoom, etc.)',
   [PERMISSIONS.BILLING_MANAGE]: "View the organization's plan, usage, and invoices; change plans or open the billing portal",
+  [PERMISSIONS.AI_FEATURES_USE]: 'Use AI features — lead insights & scoring, drafting sequence step copy, and the conversational assistant',
 };
 
 /** Description seeded onto each organization's own copy of the 5 default roles. Editable

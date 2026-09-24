@@ -2,11 +2,13 @@ import { Outlet } from 'react-router-dom';
 import { TopNav } from '@/components/layout/TopNav';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { ImpersonationBanner } from '@/components/layout/ImpersonationBanner';
+import { AiChatPanel } from '@/components/layout/AiChatPanel';
 
 export function AppLayout() {
   return (
     <div className="flex h-screen flex-col bg-background">
       <ImpersonationBanner />
+      <AiChatPanel />
       <TopNav />
       <div className="flex flex-1 overflow-hidden bg-background">
         <Sidebar />
