@@ -38,10 +38,25 @@ export interface ButtonProps
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, loading, disabled, children, ...props }, ref) => {
     const Comp = asChild ? Slot : 'button';
+    // When asChild is true, Comp is Radix's Slot, which requires its `children` to be exactly
+    // one valid React element (the thing being "slotted onto", e.g. a react-router <Link>) — see
+    // https://github.com/radix-ui/primitives Slot implementation. Passing the loading spinner as
+    // a sibling of {children} (even though `loading && <Loader2/>` is almost always falsy) still
+    // makes JSX build an array of two items for `children`, which Slot rejects with "Slot failed
+    // to slot onto its children. Expected a single React element child or `Slottable`." — a
+    // synchronous render crash with no visible error boundary in this app, i.e. a blank page.
+    // asChild buttons in this codebase never pass `loading` (they wrap a Link, not an async
+    // action), so it's safe to just skip the spinner slot entirely in that case.
     return (
       <Comp className={cn(buttonVariants({ variant, size, className }))} ref={ref} disabled={disabled || loading} {...props}>
-        {loading && <Loader2 className="animate-spin" />}
-        {children}
+        {asChild ? (
+          children
+        ) : (
+          <>
+            {loading && <Loader2 className="animate-spin" />}
+            {children}
+          </>
+        )}
       </Comp>
     );
   }
