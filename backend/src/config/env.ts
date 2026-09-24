@@ -79,6 +79,14 @@ const envSchema = z.object({
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
   STRIPE_PRO_PRICE_ID: z.string().optional(),
   STRIPE_ENTERPRISE_PRICE_ID: z.string().optional(),
+
+  // Phase 13 (super admin). Optional, comma-separated list of email addresses to promote to
+  // isPlatformAdmin (see db/schema.ts's users.isPlatformAdmin comment) — checked on every boot via
+  // utils/platformAdminBackfill.ts, the same "runs on every db:migrate, safe to leave set
+  // permanently" pattern as utils/permissionCatalogBackfill.ts. Deliberately NOT a self-service
+  // in-app action: granting platform-wide, cross-tenant access is an operator decision made by
+  // editing this env var and redeploying, never a button any organization's own Admin can reach.
+  PLATFORM_ADMIN_EMAILS: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

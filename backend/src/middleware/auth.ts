@@ -61,6 +61,10 @@ async function authenticateApiKey(rawKey: string, req: Request, next: NextFuncti
       role: 'API_KEY',
       permissions: row.permissions as string[],
       organizationId: row.organizationId,
+      // An API key is a tenant-scoped credential (see this table's own schema.ts comment) — it
+      // must never carry platform-admin power, which is why this is hardcoded rather than read
+      // from anything on the row.
+      isPlatformAdmin: false,
     };
     // Fire-and-forget — a failure to record last-used-at should never fail the actual request.
     db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.id, row.id)).catch(() => {});
@@ -91,4 +95,16 @@ export function requirePermission(...permissions: PermissionKey[]) {
     }
     next();
   };
+}
+
+/**
+ * Restricts a route to platform admins (see db/schema.ts's users.isPlatformAdmin comment).
+ * Deliberately separate from requirePermission above — this is never satisfied by any
+ * PERMISSIONS grant or role, ADMIN included, so an organization's own Admin can never reach a
+ * modules/platformAdmin/* route no matter what their role holds.
+ */
+export function requirePlatformAdmin(req: Request, _res: Response, next: NextFunction) {
+  if (!req.user) return next(ApiError.unauthorized());
+  if (!req.user.isPlatformAdmin) return next(ApiError.forbidden('Platform admin access required'));
+  next();
 }

@@ -173,6 +173,15 @@ export const users = pgTable(
     avatarUrl: text('avatar_url'),
     roleId: uuid('role_id').notNull().references(() => roles.id),
     isActive: boolean('is_active').notNull().default(true),
+    // Phase 13 (super admin) — a platform-operator flag, entirely orthogonal to the tenant RBAC
+    // system above (roleId/permissions). A platform admin is still an ordinary user row belonging
+    // to some organization (see PLATFORM_ADMIN_EMAILS in config/env.ts for how this gets set —
+    // deliberately not self-service), but this one flag unlocks the separate
+    // modules/platformAdmin/* routes, which read/act across EVERY organization rather than being
+    // scoped to this user's own organizationId like everything else in this app. Never granted via
+    // a role or PERMISSIONS key — mixing it into that system would make an org's own Admin able to
+    // grant platform-wide access to one of their own users, which must never be possible.
+    isPlatformAdmin: boolean('is_platform_admin').notNull().default(false),
     mustChangePassword: boolean('must_change_password').notNull().default(true),
     lastLoginAt: timestamp('last_login_at'),
     createdById: uuid('created_by_id'),

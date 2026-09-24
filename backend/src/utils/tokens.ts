@@ -12,6 +12,10 @@ export interface AccessTokenPayload {
   // verified JWT — the same trust model already used for `role`/`permissions` above. Every
   // tenant-scoped query must read it via utils/tenant.ts's orgId(req), not from req.body/query.
   organizationId: string;
+  // Phase 13 (super admin) — see db/schema.ts's users.isPlatformAdmin comment. Carried in the
+  // token the same way role/permissions are, and re-derived fresh at every login/refresh from the
+  // DB row rather than ever being client-settable.
+  isPlatformAdmin: boolean;
 }
 
 export function signAccessToken(payload: AccessTokenPayload): string {

@@ -2,7 +2,7 @@ import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { useAuthBootstrap } from '@/hooks/useAuthBootstrap';
-import { ProtectedRoute, RequirePermission } from '@/routes/ProtectedRoute';
+import { ProtectedRoute, RequirePermission, RequirePlatformAdmin } from '@/routes/ProtectedRoute';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { PERMISSIONS } from '@/lib/permissions';
 import LoginPage from '@/pages/LoginPage';
@@ -36,6 +36,8 @@ const CustomizationPage = lazy(() => import('@/pages/customization/Customization
 const CustomObjectDetailPage = lazy(() => import('@/pages/customObjects/CustomObjectDetailPage'));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
 const AuditLogsPage = lazy(() => import('@/pages/AuditLogsPage'));
+// Phase 13 (super admin), slice 1.
+const PlatformOrganizationsPage = lazy(() => import('@/pages/platformAdmin/PlatformOrganizationsPage'));
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'));
 
 function PageFallback() {
@@ -181,6 +183,17 @@ export default function App() {
             }
           />
           <Route path="/settings" element={<SettingsPage />} />
+
+          <Route
+            path="/platform-admin/organizations"
+            element={
+              // Phase 13 (super admin), slice 1 — see RequirePlatformAdmin's own comment for why
+              // this is gated on the raw isPlatformAdmin flag rather than a RequirePermission call.
+              <RequirePlatformAdmin>
+                <PlatformOrganizationsPage />
+              </RequirePlatformAdmin>
+            }
+          />
 
           <Route path="*" element={<NotFoundPage />} />
         </Route>

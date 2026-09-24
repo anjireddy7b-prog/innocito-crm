@@ -9,6 +9,12 @@ export interface AuthUser {
   permissions: string[];
   avatarUrl?: string | null;
   mustChangePassword?: boolean;
+  // Phase 13 (super admin) — see backend/src/db/schema.ts's users.isPlatformAdmin comment.
+  // Optional because it's a new field on an interface that's also populated straight from
+  // whatever /auth/me or login returned before this phase existed; treat a missing value the
+  // same as `false` everywhere this is read (see ProtectedRoute.tsx's RequirePlatformAdmin and
+  // Sidebar.tsx's nav item gate below).
+  isPlatformAdmin?: boolean;
 }
 
 interface AuthState {

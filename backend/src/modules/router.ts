@@ -35,6 +35,7 @@ import { apiKeysRouter } from './apiKeys/apiKeys.routes';
 import { webhooksRouter } from './webhooks/webhooks.routes';
 import { connectorsRouter } from './connectors/connectors.routes';
 import { billingRouter } from './billing/billing.routes';
+import { platformAdminRouter } from './platformAdmin/platformAdmin.routes';
 
 export const apiRouter = Router();
 
@@ -74,3 +75,4 @@ apiRouter.use('/api-keys', apiKeysRouter);
 apiRouter.use('/webhooks', webhooksRouter);
 apiRouter.use('/connectors', connectorsRouter);
 apiRouter.use('/billing', billingRouter);
+apiRouter.use('/platform-admin', platformAdminRouter);

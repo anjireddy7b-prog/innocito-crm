@@ -33,3 +33,13 @@ export function RequireRole({ roles, children }: { roles: string[]; children: Re
   if (!hasRole) return <Navigate to="/dashboard" replace />;
   return <>{children}</>;
 }
+
+// Phase 13 (super admin), slice 1. Deliberately checks user.isPlatformAdmin directly rather than
+// going through hasPermission/hasRole above — see backend/src/db/schema.ts's users.isPlatformAdmin
+// comment for why this flag is kept entirely outside the PERMISSIONS/role system: an organization's
+// own Admin (however permissioned) must never be able to satisfy this guard.
+export function RequirePlatformAdmin({ children }: { children: ReactNode }) {
+  const isPlatformAdmin = useAuthStore((s) => !!s.user?.isPlatformAdmin);
+  if (!isPlatformAdmin) return <Navigate to="/dashboard" replace />;
+  return <>{children}</>;
+}

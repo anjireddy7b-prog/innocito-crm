@@ -121,6 +121,10 @@ export async function signup(
     role: adminRole.name,
     permissions: adminPermissions,
     organizationId: organization.id,
+    // A brand-new self-service signup can never be a platform admin (see db/schema.ts's
+    // users.isPlatformAdmin comment) — that's only ever set by an operator via
+    // PLATFORM_ADMIN_EMAILS, never through this flow.
+    isPlatformAdmin: false,
   });
 
   const refreshValue = generateRefreshTokenValue();

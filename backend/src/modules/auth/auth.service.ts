@@ -16,7 +16,7 @@ import { recordAudit } from '@/utils/auditLogger';
 async function loadUserWithPermissions(userId: string) {
   const user = await db.query.users.findFirst({
     where: eq(users.id, userId),
-    with: { role: { with: { permissions: { with: { permission: true } } } } },
+    with: { role: { with: { permissions: { with: { permission: true } } } }, organization: true },
   });
   if (!user) return null;
   const permissions = user.role.permissions.map((rp) => rp.permission.key);
@@ -26,7 +26,7 @@ async function loadUserWithPermissions(userId: string) {
 export async function login(req: Request, email: string, password: string) {
   const user = await db.query.users.findFirst({
     where: eq(users.email, email.toLowerCase()),
-    with: { role: { with: { permissions: { with: { permission: true } } } } },
+    with: { role: { with: { permissions: { with: { permission: true } } } }, organization: true },
   });
 
   if (!user || !user.isActive) {
@@ -40,6 +40,23 @@ export async function login(req: Request, email: string, password: string) {
     throw ApiError.unauthorized('Invalid email or password');
   }
 
+  // Phase 13 (super admin): checked AFTER the password verifies above, not before — so someone
+  // who doesn't already know this account's password learns nothing about whether its
+  // organization happens to be suspended. A platform admin is exempt: their own home
+  // organization (see db/schema.ts's users.isPlatformAdmin comment) is never meant to gate their
+  // ability to operate the platform admin console itself.
+  if (!user.organization.isActive && !user.isPlatformAdmin) {
+    await recordAudit({
+      req,
+      action: 'LOGIN_FAILED',
+      entityType: 'User',
+      entityId: user.id,
+      organizationId: user.organizationId,
+      newValues: { reason: 'organization_suspended' },
+    });
+    throw ApiError.unauthorized('This organization has been suspended. Contact support for help.');
+  }
+
   const permissions = user.role.permissions.map((rp) => rp.permission.key);
   const accessToken = signAccessToken({
     sub: user.id,
@@ -47,6 +64,7 @@ export async function login(req: Request, email: string, password: string) {
     role: user.role.name,
     permissions,
     organizationId: user.organizationId,
+    isPlatformAdmin: user.isPlatformAdmin,
   });
 
   const refreshValue = generateRefreshTokenValue();
@@ -61,7 +79,7 @@ export async function login(req: Request, email: string, password: string) {
   await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id));
   await recordAudit({ req, action: 'LOGIN', entityType: 'User', entityId: user.id, organizationId: user.organizationId });
 
-  const { passwordHash, ...safeUser } = user;
+  const { passwordHash, organization, ...safeUser } = user;
   return {
     accessToken,
     refreshToken: refreshValue,
@@ -79,6 +97,12 @@ export async function refresh(req: Request, refreshTokenValue: string) {
 
   const loaded = await loadUserWithPermissions(stored.userId);
   if (!loaded || !loaded.user.isActive) throw ApiError.unauthorized('User account is inactive');
+  // Phase 13 (super admin): a session silently refreshing in the background gets no special
+  // message (see login()'s own comment) — it just fails, and the frontend falls back to the
+  // login screen, where the clearer message above is what the person actually sees.
+  if (!loaded.user.organization.isActive && !loaded.user.isPlatformAdmin) {
+    throw ApiError.unauthorized('Organization suspended');
+  }
 
   // Rotate: revoke the old token, issue a new one
   await db.update(refreshTokens).set({ revokedAt: new Date() }).where(eq(refreshTokens.id, stored.id));
@@ -97,6 +121,7 @@ export async function refresh(req: Request, refreshTokenValue: string) {
     role: loaded.user.role.name,
     permissions: loaded.permissions,
     organizationId: loaded.user.organizationId,
+    isPlatformAdmin: loaded.user.isPlatformAdmin,
   });
 
   return { accessToken, refreshToken: newRefreshValue };
@@ -111,7 +136,7 @@ export async function logout(refreshTokenValue: string | undefined) {
 export async function getCurrentUser(userId: string) {
   const loaded = await loadUserWithPermissions(userId);
   if (!loaded) throw ApiError.notFound('User not found');
-  const { passwordHash, ...safeUser } = loaded.user;
+  const { passwordHash, organization, ...safeUser } = loaded.user;
   return { ...safeUser, permissions: loaded.permissions, role: loaded.user.role.name };
 }
 

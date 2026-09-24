@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Target, Building2, Users, Megaphone, Activity, CalendarClock, ListChecks,
   FileText, BarChart3, UserCog, ShieldCheck, KeyRound, Settings, ChevronLeft, ChevronRight,
-  SlidersHorizontal, Box, GitMerge, LifeBuoy, BookOpen, Send, PieChart,
+  SlidersHorizontal, Box, GitMerge, LifeBuoy, BookOpen, Send, PieChart, Globe2,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useUIStore } from '@/store/uiStore';
@@ -18,6 +18,11 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>;
   permission?: string;
   roles?: string[];
+  // Phase 13 (super admin), slice 1. A separate field rather than reusing `permission`/`roles`:
+  // isPlatformAdmin is deliberately kept outside the PERMISSIONS/role system entirely (see
+  // backend/src/db/schema.ts's users.isPlatformAdmin comment), so it needs its own boolean check
+  // in visibleItems below rather than going through hasPermission/hasRole.
+  platformAdminOnly?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -62,6 +67,10 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Customization', to: '/customization', icon: SlidersHorizontal, permission: PERMISSIONS.CUSTOM_FIELDS_MANAGE },
   { label: 'Audit Logs', to: '/audit-logs', icon: ShieldCheck, permission: PERMISSIONS.AUDIT_LOGS_VIEW },
   { label: 'Settings', to: '/settings', icon: Settings },
+  // Phase 13 (super admin), slice 1 — visible only to isPlatformAdmin (see platformAdminOnly's own
+  // comment on the NavItem interface above), never to an organization's own Admin no matter how
+  // permissioned. Placed last since it operates on a different plane than every item above it.
+  { label: 'Platform Admin', to: '/platform-admin/organizations', icon: Globe2, platformAdminOnly: true },
 ];
 
 const SIDEBAR_WIDTH_EXPANDED = 'w-60';
@@ -87,7 +96,7 @@ function isPathActive(pathname: string, to: string) {
 }
 
 export function Sidebar() {
-  const { hasPermission, hasRole } = useAuthStore();
+  const { hasPermission, hasRole, user } = useAuthStore();
   const { sidebarCollapsed, toggleSidebar } = useUIStore();
   const { pathname } = useLocation();
 
@@ -116,6 +125,7 @@ export function Sidebar() {
   }, [customObjectDefinitions]);
 
   const visibleItems = items.filter((item) => {
+    if (item.platformAdminOnly && !user?.isPlatformAdmin) return false;
     if (item.roles && !hasRole(...item.roles)) return false;
     if (item.permission && !hasPermission(item.permission)) return false;
     return true;

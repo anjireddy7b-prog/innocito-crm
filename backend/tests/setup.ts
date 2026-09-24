@@ -17,8 +17,16 @@ export const TEST_SALES = { email: 'sales@innocito.com', password: 'Welcome@123'
 // depending on seedMinimal()'s internals.
 export const TEST_ORG_B_ADMIN = { email: 'admin@othertenant.com', password: 'ChangeMe!123' };
 
+// Phase 13 (super admin) — a platform admin is still an ordinary user row (see db/schema.ts's
+// users.isPlatformAdmin comment), but deliberately lives in its OWN third organization here
+// rather than being added to primaryOrgId's user set: several existing tests (and billing.test.ts
+// from Phase 12) assert exact user counts for primaryOrgId, and a platform admin isn't a real
+// member of that tenant's team anyway.
+export const TEST_PLATFORM_ADMIN = { email: 'ops@innocito-platform.internal', password: 'ChangeMe!123' };
+
 export let primaryOrgId: string;
 export let secondaryOrgId: string;
+export let internalOrgId: string;
 
 // Phase 3: role name -> roleId, one independent map per organization (see
 // utils/defaultRoles.ts). Exported so tests that need to assign/reassign a role (e.g.
@@ -38,6 +46,8 @@ async function seedMinimal() {
   primaryOrgId = primaryOrg.id;
   const [secondaryOrg] = await db.insert(organizations).values({ name: 'Other Tenant', slug: 'other-tenant' }).returning();
   secondaryOrgId = secondaryOrg.id;
+  const [internalOrg] = await db.insert(organizations).values({ name: 'Internal Ops', slug: 'internal-ops' }).returning();
+  internalOrgId = internalOrg.id;
 
   await Promise.all(ALL_PERMISSIONS.map((key) => db.insert(permissions).values({ key })));
 
@@ -46,8 +56,10 @@ async function seedMinimal() {
   // the two test tenants, mirroring exactly what migrations 0011-0013 fixed for real data.
   const primaryRoles = await seedDefaultRolesForOrganization(primaryOrgId);
   const secondaryRoles = await seedDefaultRolesForOrganization(secondaryOrgId);
+  const internalRoles = await seedDefaultRolesForOrganization(internalOrgId);
   primaryRoleIds = Object.fromEntries([...primaryRoles.entries()].map(([name, role]) => [name, role.id]));
   secondaryRoleIds = Object.fromEntries([...secondaryRoles.entries()].map(([name, role]) => [name, role.id]));
+  const internalRoleIds = Object.fromEntries([...internalRoles.entries()].map(([name, role]) => [name, role.id]));
 
   const primaryStages = await seedDefaultPipelineStagesForOrganization(primaryOrgId);
   const secondaryStages = await seedDefaultPipelineStagesForOrganization(secondaryOrgId);
@@ -98,6 +110,21 @@ async function seedMinimal() {
     passwordHash: await argon2.hash(TEST_ORG_B_ADMIN.password),
     mustChangePassword: false,
     isActive: true,
+  });
+
+  // Phase 13 (super admin) — the one seeded user with isPlatformAdmin: true, used by
+  // platformAdmin.test.ts. Lives in its own org (see internalOrgId above), same as
+  // TEST_ORG_B_ADMIN lives in secondaryOrgId.
+  await db.insert(users).values({
+    organizationId: internalOrgId,
+    email: TEST_PLATFORM_ADMIN.email,
+    firstName: 'Platform',
+    lastName: 'Admin',
+    roleId: internalRoleIds.ADMIN,
+    passwordHash: await argon2.hash(TEST_PLATFORM_ADMIN.password),
+    mustChangePassword: false,
+    isActive: true,
+    isPlatformAdmin: true,
   });
 
   // Mirrors migration 0003_seed_new_campaigns.sql — the TRUNCATE below wipes out whatever the
