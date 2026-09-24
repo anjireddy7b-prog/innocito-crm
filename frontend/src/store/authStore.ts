@@ -15,6 +15,10 @@ export interface AuthUser {
   // same as `false` everywhere this is read (see ProtectedRoute.tsx's RequirePlatformAdmin and
   // Sidebar.tsx's nav item gate below).
   isPlatformAdmin?: boolean;
+  // Phase 15 (security hardening) — TOTP-based MFA. Same "optional, treat missing as false"
+  // precedent as isPlatformAdmin above. Read by SettingsPage's MfaCard to decide whether to show
+  // "Enable" or "Manage/Disable".
+  mfaEnabled?: boolean;
 }
 
 interface AuthState {
@@ -30,6 +34,11 @@ interface AuthState {
   isImpersonating: boolean;
   impersonationAdmin: { user: AuthUser; accessToken: string } | null;
   setSession: (user: AuthUser, accessToken: string) => void;
+  // Phase 15 (security hardening) — TOTP-based MFA. Lets SettingsPage's MfaCard flip
+  // user.mfaEnabled immediately after enable/disable succeeds, without a round trip to /auth/me
+  // just to pick up the one field that changed. A no-op if called with no session (shouldn't
+  // happen — every caller is behind `authenticate`-gated UI already).
+  updateUser: (patch: Partial<AuthUser>) => void;
   clearSession: () => void;
   setStatus: (status: AuthState['status']) => void;
   hasPermission: (permission: string) => boolean;
@@ -45,6 +54,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isImpersonating: false,
   impersonationAdmin: null,
   setSession: (user, accessToken) => set({ user, accessToken, status: 'authenticated' }),
+  updateUser: (patch) => {
+    const current = get().user;
+    if (!current) return;
+    set({ user: { ...current, ...patch } });
+  },
   clearSession: () => set({ user: null, accessToken: null, status: 'unauthenticated', isImpersonating: false, impersonationAdmin: null }),
   setStatus: (status) => set({ status }),
   hasPermission: (permission) => get().user?.permissions.includes(permission) ?? false,

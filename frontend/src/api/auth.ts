@@ -1,9 +1,41 @@
 import { api, ApiEnvelope } from '@/lib/api';
 import type { AuthUser } from '@/store/authStore';
 
-export async function loginRequest(email: string, password: string) {
-  const res = await api.post<ApiEnvelope<{ accessToken: string; user: AuthUser }>>('/auth/login', { email, password });
+// Phase 15 (security hardening) — TOTP-based MFA. Mirrors backend/src/modules/auth/
+// auth.controller.ts's login response exactly: a discriminated union on `mfaRequired`, so
+// LoginPage's caller must handle both branches rather than assuming accessToken/user are always
+// present (see that controller's own comment for why the MFA branch sets no cookie either).
+export type LoginResult =
+  | { mfaRequired: true; challengeToken: string }
+  | { mfaRequired: false; accessToken: string; user: AuthUser };
+
+export async function loginRequest(email: string, password: string): Promise<LoginResult> {
+  const res = await api.post<ApiEnvelope<LoginResult>>('/auth/login', { email, password });
   return res.data.data;
+}
+
+export async function mfaLoginVerifyRequest(challengeToken: string, code: string) {
+  const res = await api.post<ApiEnvelope<{ accessToken: string; user: AuthUser }>>('/auth/mfa/login-verify', { challengeToken, code });
+  return res.data.data;
+}
+
+export interface MfaSetup {
+  secret: string;
+  qrCodeDataUrl: string;
+}
+
+export async function setupMfaRequest() {
+  const res = await api.post<ApiEnvelope<MfaSetup>>('/auth/mfa/setup');
+  return res.data.data;
+}
+
+export async function enableMfaRequest(code: string) {
+  const res = await api.post<ApiEnvelope<{ backupCodes: string[] }>>('/auth/mfa/enable', { code });
+  return res.data.data;
+}
+
+export async function disableMfaRequest(password: string) {
+  await api.post('/auth/mfa/disable', { password });
 }
 
 export async function refreshRequest() {

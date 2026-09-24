@@ -5,6 +5,7 @@ import { apiKeys } from '@/db/schema';
 import { ApiError } from '@/utils/ApiError';
 import { verifyAccessToken, AccessTokenPayload, hashToken } from '@/utils/tokens';
 import { PermissionKey } from '@/utils/permissions';
+import { isIpAllowed } from '@/utils/ipAllowlist';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -36,10 +37,29 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
   const token = header.slice('Bearer '.length);
   try {
     req.user = verifyAccessToken(token);
-    next();
   } catch {
-    next(ApiError.unauthorized('Invalid or expired access token'));
+    return next(ApiError.unauthorized('Invalid or expired access token'));
   }
+  return enforceIpAllowlist(req, next);
+}
+
+// Phase 15 (security hardening) — checked on EVERY authenticated request, not just at login
+// (auth.service.ts's login has its own, earlier check for the same reason auth.controller.ts's
+// login rejects a suspended organization AFTER verifying the password: this one runs after
+// req.user already exists, so it belongs here, not there). An access token issued while on an
+// allowed network stays cryptographically valid — JWTs aren't revocable — until it naturally
+// expires, so this is what actually stops that token being used from outside the organization's
+// configured ranges once it's out in the wild, not just a one-time gate at sign-in. A platform
+// admin (db/schema.ts's isPlatformAdmin) is exempt: the platform-admin console exists partly to
+// support/operate organizations FROM outside their own network, and this per-organization
+// restriction was never meant to reach the one flag that already sits outside every other
+// org-scoped rule in this app (see requirePlatformAdmin below, and every function in
+// platformAdmin.service.ts).
+async function enforceIpAllowlist(req: Request, next: NextFunction) {
+  if (req.user!.isPlatformAdmin) return next();
+  const allowed = await isIpAllowed(req.user!.organizationId, req.ip);
+  if (!allowed) return next(ApiError.forbidden("Your network is not on this organization's allowed list."));
+  next();
 }
 
 async function authenticateApiKey(rawKey: string, req: Request, next: NextFunction) {
@@ -68,7 +88,7 @@ async function authenticateApiKey(rawKey: string, req: Request, next: NextFuncti
     };
     // Fire-and-forget — a failure to record last-used-at should never fail the actual request.
     db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.id, row.id)).catch(() => {});
-    next();
+    return enforceIpAllowlist(req, next);
   } catch {
     next(ApiError.unauthorized('Invalid API key'));
   }

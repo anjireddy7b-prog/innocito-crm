@@ -21,6 +21,23 @@ export function setRefreshCookie(res: Response, token: string) {
 export const login = asyncHandler(async (req: Request, res: Response) => {
   const { email, password } = req.body;
   const result = await authService.login(req, email, password);
+  // Phase 15 (security hardening) — TOTP-based MFA. No refresh cookie is set on this branch: the
+  // caller isn't signed in yet, just holding a short-lived challenge token (see
+  // auth.service.ts's login()) that only mfaLoginVerify below can redeem into a real session.
+  if (result.mfaRequired) {
+    return res.json({ success: true, data: { mfaRequired: true, challengeToken: result.challengeToken } });
+  }
+  setRefreshCookie(res, result.refreshToken);
+  res.json({ success: true, data: { mfaRequired: false, accessToken: result.accessToken, user: result.user } });
+});
+
+// Phase 15 (security hardening). Same response shape as login's non-MFA branch above (frontend's
+// login flow treats "password OK, no MFA" and "password OK, then MFA code OK" identically once
+// they reach this point) — this is what actually creates the session/refresh cookie for an
+// MFA-enabled account.
+export const mfaLoginVerify = asyncHandler(async (req: Request, res: Response) => {
+  const { challengeToken, code } = req.body;
+  const result = await authService.verifyMfaChallenge(req, challengeToken, code);
   setRefreshCookie(res, result.refreshToken);
   res.json({ success: true, data: { accessToken: result.accessToken, user: result.user } });
 });
@@ -72,6 +89,23 @@ export const revokeOtherSessions = asyncHandler(async (req: Request, res: Respon
   const currentToken = req.cookies?.[REFRESH_COOKIE];
   const result = await authService.revokeOtherSessions(req, req.user!.sub, currentToken);
   res.json({ success: true, data: result });
+});
+
+// Phase 15 (security hardening) — TOTP-based MFA, self-service management (see auth.service.ts's
+// own module comment for the "no org-level enforcement policy in this slice" scope note).
+export const setupMfa = asyncHandler(async (req: Request, res: Response) => {
+  const result = await authService.setupMfa(req.user!.sub, req.user!.email);
+  res.json({ success: true, data: result });
+});
+
+export const enableMfa = asyncHandler(async (req: Request, res: Response) => {
+  const result = await authService.enableMfa(req, req.user!.sub, req.body.code);
+  res.json({ success: true, data: result });
+});
+
+export const disableMfa = asyncHandler(async (req: Request, res: Response) => {
+  await authService.disableMfa(req, req.user!.sub, req.body.password);
+  res.json({ success: true, data: null });
 });
 
 // Phase 13 (super admin), slice 2. Only reachable with an impersonation token — see this route's

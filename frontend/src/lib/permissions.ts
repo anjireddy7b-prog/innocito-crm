@@ -56,4 +56,7 @@ export const PERMISSIONS = {
   // Phase 14 (AI) — mirrors backend/src/utils/permissions.ts. Broadly granted (not admin-gated),
   // see that file's own comment for why.
   AI_FEATURES_USE: 'ai:use',
+  // Phase 15 (security hardening) — mirrors backend/src/utils/permissions.ts. Same "ADMIN by
+  // default" gate as API_KEYS_MANAGE/WEBHOOKS_MANAGE/CONNECTORS_MANAGE/BILLING_MANAGE above.
+  IP_ALLOWLIST_MANAGE: 'ip_allowlist:manage',
 } as const;

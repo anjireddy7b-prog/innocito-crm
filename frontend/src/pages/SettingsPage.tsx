@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { KeyRound, User, Shield, Building2, Mail, Send, Unlink, CalendarClock, RefreshCw, Plus, Trash2, Code2, Webhook, Copy, Check, ChevronDown, ChevronUp, Plug, Pencil, CreditCard, Monitor, LogOut } from 'lucide-react';
+import { KeyRound, User, Shield, Building2, Mail, Send, Unlink, CalendarClock, RefreshCw, Plus, Trash2, Code2, Webhook, Copy, Check, ChevronDown, ChevronUp, Plug, Pencil, CreditCard, Monitor, LogOut, Network, Smartphone } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -16,7 +16,8 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
-import { changePasswordRequest, listSessionsRequest, revokeSessionRequest, revokeOtherSessionsRequest } from '@/api/auth';
+import { changePasswordRequest, listSessionsRequest, revokeSessionRequest, revokeOtherSessionsRequest, disableMfaRequest } from '@/api/auth';
+import { MfaSetupDialog } from './settings/MfaSetupDialog';
 import { useMyOrganization, useUpdateMyOrganization } from '@/api/organizations';
 import {
   useIntegrationsStatus,
@@ -26,6 +27,7 @@ import {
   type OAuthProvider,
 } from '@/api/integrations';
 import { useApiKeys, useRevokeApiKey, type ApiKey } from '@/api/apiKeys';
+import { useIpAllowlistEntries, useCreateIpAllowlistEntry, useDeleteIpAllowlistEntry, type IpAllowlistEntry } from '@/api/ipAllowlist';
 import { ApiKeyFormDialog } from './settings/ApiKeyFormDialog';
 import {
   useWebhookEndpoints,
@@ -134,6 +136,10 @@ export default function SettingsPage() {
           backend/src/utils/permissions.ts's BILLING_MANAGE comment. */}
       {hasPermission(PERMISSIONS.BILLING_MANAGE) && <BillingCard />}
 
+      {/* Phase 15 (security hardening) — same "ADMIN by default" gate as the cards above; see
+          backend/src/utils/permissions.ts's IP_ALLOWLIST_MANAGE comment. */}
+      {hasPermission(PERMISSIONS.IP_ALLOWLIST_MANAGE) && <IpAllowlistCard />}
+
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><KeyRound className="h-4 w-4" /> Change Password</CardTitle></CardHeader>
         <CardContent>
@@ -160,12 +166,89 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      <MfaCard />
+
       <SessionsCard />
 
       <p className="text-center text-xs text-muted-foreground">
         Need a new team member, role change, or password reset for someone else? Contact an Admin — self-service account creation within your organization is disabled by design.
       </p>
     </div>
+  );
+}
+
+// Phase 15 (security hardening) — TOTP-based MFA, self-service. Same "no permission gate — it's
+// your own account" reasoning as SessionsCard/Change Password below: enable/disable are both
+// scoped server-side to the caller's own userId (see backend/src/modules/auth/auth.service.ts's
+// setupMfa/enableMfa/disableMfa). There is deliberately no org-level "require MFA for everyone"
+// control here — see that file's own module comment for the scope boundary, and for why full
+// SAML/OIDC SSO (the other half of what's sometimes meant by "MFA/SSO") isn't attempted at all:
+// it needs a real external identity provider to configure and verify against.
+function MfaCard() {
+  const user = useAuthStore((s) => s.user);
+  const updateUser = useAuthStore((s) => s.updateUser);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [disableOpen, setDisableOpen] = useState(false);
+  const [password, setPassword] = useState('');
+  const disableMfa = useMutation({
+    mutationFn: disableMfaRequest,
+    onSuccess: () => {
+      updateUser({ mfaEnabled: false });
+      toast.success('MFA disabled');
+      setDisableOpen(false);
+      setPassword('');
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Failed to disable MFA — check your password')),
+  });
+
+  return (
+    <Card>
+      <CardHeader className="flex-row items-start justify-between gap-2 space-y-0">
+        <div>
+          <CardTitle className="flex items-center gap-2"><Smartphone className="h-4 w-4" /> Two-Factor Authentication</CardTitle>
+          <CardDescription>Require a code from an authenticator app, in addition to your password, when signing in.</CardDescription>
+        </div>
+        {user?.mfaEnabled ? (
+          <Badge variant="outline" className="border-transparent bg-emerald-100 font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">Enabled</Badge>
+        ) : (
+          <Badge variant="outline" className="text-muted-foreground">Disabled</Badge>
+        )}
+      </CardHeader>
+      <CardContent>
+        {user?.mfaEnabled ? (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground">Your account is protected by two-factor authentication.</p>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setSetupOpen(true)}>Reconfigure</Button>
+              <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => setDisableOpen(true)}>Disable</Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground">Not enabled — your account only requires a password to sign in.</p>
+            <Button size="sm" onClick={() => setSetupOpen(true)}>Enable</Button>
+          </div>
+        )}
+      </CardContent>
+
+      <MfaSetupDialog open={setupOpen} onOpenChange={setSetupOpen} />
+
+      <ConfirmDialog
+        open={disableOpen}
+        onOpenChange={(o) => { setDisableOpen(o); if (!o) setPassword(''); }}
+        title="Disable two-factor authentication?"
+        description="Your account will only require a password to sign in. Enter your current password to confirm."
+        destructive
+        confirmLabel="Disable MFA"
+        loading={disableMfa.isPending}
+        onConfirm={() => disableMfa.mutate(password)}
+      >
+        <div className="space-y-1.5">
+          <Label htmlFor="mfa-disable-password">Current password</Label>
+          <Input id="mfa-disable-password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        </div>
+      </ConfirmDialog>
+    </Card>
   );
 }
 
@@ -533,6 +616,113 @@ function ApiKeysCard() {
             setRevokeTarget(null);
           } catch (err) {
             toast.error(apiErrorMessage(err, 'Failed to revoke API key'));
+          }
+        }}
+      />
+    </Card>
+  );
+}
+
+// Phase 15 (security hardening). An org with zero entries is unrestricted — the empty state below
+// says so explicitly, matching backend/src/utils/ipAllowlist.ts's own framing, rather than reading
+// as a bug ("why is this list empty?"). Deleting the covering entry (or adding one that excludes
+// the caller's own IP) is rejected server-side by the "lockout safety net" in
+// backend/src/modules/ipAllowlist/ipAllowlist.service.ts — this card doesn't try to replicate that
+// check client-side; it just surfaces the resulting 400's message via apiErrorMessage.
+function IpAllowlistCard() {
+  const { data: entries, isLoading } = useIpAllowlistEntries();
+  const createEntry = useCreateIpAllowlistEntry();
+  const deleteEntry = useDeleteIpAllowlistEntry();
+  const [cidr, setCidr] = useState('');
+  const [label, setLabel] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<IpAllowlistEntry | null>(null);
+
+  const handleAdd = async () => {
+    const trimmed = cidr.trim();
+    if (!trimmed) return;
+    try {
+      await createEntry.mutateAsync({ cidr: trimmed, label: label.trim() || undefined });
+      toast.success('Range added');
+      setCidr('');
+      setLabel('');
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Failed to add range'));
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><Network className="h-4 w-4" /> IP Allowlist</CardTitle>
+        <CardDescription>
+          Restrict sign-in and API access to specific networks. With no ranges added, every network is allowed — add your first range to start restricting.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="min-w-[180px] flex-1 space-y-1.5">
+            <Label>IP or CIDR range</Label>
+            <Input
+              placeholder="203.0.113.0/24"
+              value={cidr}
+              onChange={(e) => setCidr(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+            />
+          </div>
+          <div className="min-w-[140px] flex-1 space-y-1.5">
+            <Label>Label (optional)</Label>
+            <Input
+              placeholder="Office network"
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+            />
+          </div>
+          <Button onClick={handleAdd} loading={createEntry.isPending} disabled={!cidr.trim()}>
+            <Plus /> Add
+          </Button>
+        </div>
+
+        {isLoading ? (
+          <Skeleton className="h-16 rounded-xl" />
+        ) : !entries?.length ? (
+          <p className="text-sm text-muted-foreground">No ranges configured — every network can currently sign in and call the API.</p>
+        ) : (
+          <div className="space-y-2">
+            {entries.map((e) => (
+              <div key={e.id} className="flex items-center justify-between gap-3 rounded-lg border border-border/60 p-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <code className="text-sm font-medium">{e.cidr}</code>
+                    {e.label && <Badge variant="outline">{e.label}</Badge>}
+                  </div>
+                  <p className="text-xs text-muted-foreground">Added {new Date(e.createdAt).toLocaleDateString()}</p>
+                </div>
+                <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(e)} aria-label={`Remove ${e.cidr}`}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => !o && setDeleteTarget(null)}
+        title={`Remove "${deleteTarget?.cidr}"?`}
+        description="Anyone outside the remaining ranges will lose sign-in and API access from this network. If removing it would lock your whole organization out (including you), this will be rejected."
+        destructive
+        confirmLabel="Remove Range"
+        loading={deleteEntry.isPending}
+        onConfirm={async () => {
+          if (!deleteTarget) return;
+          try {
+            await deleteEntry.mutateAsync(deleteTarget.id);
+            toast.success('Range removed');
+            setDeleteTarget(null);
+          } catch (err) {
+            toast.error(apiErrorMessage(err, 'Failed to remove range'));
           }
         }}
       />

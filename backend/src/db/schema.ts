@@ -67,6 +67,10 @@ export const auditActionEnum = pgEnum('audit_action', [
   // (ACCOUNT_LOCKED, logged once when failedLoginAttempts crosses the threshold, not on every
   // subsequent failed attempt while already locked — see auth.service.ts's login()).
   'SESSION_REVOKED', 'ACCOUNT_LOCKED',
+  // Phase 15 (security hardening) — TOTP-based MFA. Logged once each, on the transition itself
+  // (enabling/disabling), never on an ordinary MFA code check during login — see
+  // auth.service.ts's enableMfa/disableMfa.
+  'MFA_ENABLED', 'MFA_DISABLED',
 ]);
 // Phase 4: custom fields engine. `entityType` on custom_field_definitions is schema-generic
 // (varchar, not an enum limited to LEAD) so a future phase can extend to companies/contacts
@@ -207,6 +211,20 @@ export const users = pgTable(
     // learns nothing about whether their guessed password was actually right.
     failedLoginAttempts: integer('failed_login_attempts').notNull().default(0),
     lockedUntil: timestamp('locked_until'),
+    // Phase 15 (security hardening) — TOTP-based MFA (utils/mfa.ts, auth.service.ts's
+    // setupMfa/enableMfa/disableMfa/verifyMfaChallenge). mfaSecretEnc is encrypted at rest the
+    // same way email_connections' OAuth tokens are (utils/tokenCrypto.ts) — set as soon as
+    // setupMfa generates a secret, but mfaEnabled stays false (and login() ignores it) until
+    // enableMfa confirms the user actually scanned it and can produce a valid code; re-running
+    // setup before that confirmation simply overwrites the still-pending secret. mfaBackupCodes
+    // holds argon2 HASHES only (never the plaintext codes, which are shown to the user exactly
+    // once by enableMfa and can't be recovered after that) — same one-way-hash discipline as
+    // passwordHash, since a backup code only ever needs to be checked for a match, never read
+    // back. `usedAt` on an individual code (rather than deleting it once spent) keeps every
+    // issued code's fate visible instead of silently shrinking the array.
+    mfaEnabled: boolean('mfa_enabled').notNull().default(false),
+    mfaSecretEnc: text('mfa_secret_enc'),
+    mfaBackupCodes: jsonb('mfa_backup_codes').$type<{ hash: string; usedAt: string | null }[]>(),
     createdById: uuid('created_by_id'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
@@ -1187,6 +1205,30 @@ export const apiKeys = pgTable(
   (t) => [index('api_keys_org_idx').on(t.organizationId)]
 );
 
+// Phase 15 (security hardening) — org-level IP allowlisting. Deliberately its own small table
+// (same shape as apiKeys/webhookEndpoints just above/below) rather than a single text[] column on
+// organizations: each entry needs its own createdAt/createdById for an audit trail of who opened
+// up which range and when, and a table gives CRUD (list/add/delete) for free the way a column
+// wouldn't. An organization with ZERO rows here is unrestricted — the allowlist only starts
+// enforcing once at least one entry exists (see middleware/ipAllowlist.ts), so adding this table
+// changes nothing for any existing organization until an Admin deliberately opts in.
+export const ipAllowlistEntries = pgTable(
+  'ip_allowlist_entries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id),
+    // A single IPv4/IPv6 address (treated as that address alone, i.e. implicitly /32 or /128) or a
+    // CIDR range (e.g. "203.0.113.0/24") — see middleware/ipAllowlist.ts's matcher for exactly
+    // what's accepted. IPv4-only for v1 (documented there, not here) — a legitimate future
+    // improvement, not a blocker for the common case of allowlisting an office/VPN egress IP.
+    cidr: varchar('cidr', { length: 64 }).notNull(),
+    label: varchar('label', { length: 150 }),
+    createdById: uuid('created_by_id').references(() => users.id),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('ip_allowlist_entries_org_idx').on(t.organizationId)]
+);
+
 // ----------------------------------------------------------------------------
 // Phase 11 — API/integrations, slice 2: outbound webhooks
 // ----------------------------------------------------------------------------
@@ -1380,11 +1422,17 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
   connectorInstances: many(connectorInstances),
   subscriptions: many(subscriptions),
   invoices: many(invoices),
+  ipAllowlistEntries: many(ipAllowlistEntries),
 }));
 
 export const apiKeysRelations = relations(apiKeys, ({ one }) => ({
   organization: one(organizations, { fields: [apiKeys.organizationId], references: [organizations.id] }),
   createdBy: one(users, { fields: [apiKeys.createdById], references: [users.id] }),
+}));
+
+export const ipAllowlistEntriesRelations = relations(ipAllowlistEntries, ({ one }) => ({
+  organization: one(organizations, { fields: [ipAllowlistEntries.organizationId], references: [organizations.id] }),
+  createdBy: one(users, { fields: [ipAllowlistEntries.createdById], references: [users.id] }),
 }));
 
 export const webhookEndpointsRelations = relations(webhookEndpoints, ({ one, many }) => ({

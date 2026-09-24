@@ -52,6 +52,40 @@ export function verifyAccessToken(token: string): AccessTokenPayload {
   return jwt.verify(token, env.JWT_ACCESS_SECRET) as AccessTokenPayload;
 }
 
+// Phase 15 (security hardening) — TOTP-based MFA. Bridges login()'s two steps (password verified,
+// then a TOTP/backup code verified) without ever handing out a real, permission-bearing access
+// token in between. Deliberately its own signAccessToken-shaped-but-distinct payload — not an
+// AccessTokenPayload with a `mfaPending` flag bolted on — so there is no field this token happens
+// to share with a real one that a careless downstream check could read (e.g. `organizationId`)
+// before noticing it's mid-challenge; `type: 'mfa_challenge'` is checked explicitly by
+// verifyMfaChallengeToken below, and this token is never passed to middleware/auth.ts's
+// authenticate at all (see auth.routes.ts's mfa/login-verify route, which takes it in the request
+// body, not the Authorization header).
+export interface MfaChallengeTokenPayload {
+  type: 'mfa_challenge';
+  sub: string; // user id
+}
+
+const MFA_CHALLENGE_TOKEN_TTL = '5m';
+
+export function signMfaChallengeToken(userId: string): string {
+  return jwt.sign({ type: 'mfa_challenge', sub: userId } satisfies MfaChallengeTokenPayload, env.JWT_ACCESS_SECRET, {
+    expiresIn: MFA_CHALLENGE_TOKEN_TTL,
+  } as jwt.SignOptions);
+}
+
+/** Throws if `token` isn't a validly-signed, unexpired MFA challenge token — including one that
+ * successfully verifies as a JWT but is actually some OTHER kind of token this app signs with the
+ * same secret (e.g. a real access token, or an impersonation token), which is exactly what the
+ * explicit `type` check below is for. */
+export function verifyMfaChallengeToken(token: string): MfaChallengeTokenPayload {
+  const payload = jwt.verify(token, env.JWT_ACCESS_SECRET) as Partial<MfaChallengeTokenPayload>;
+  if (payload.type !== 'mfa_challenge' || typeof payload.sub !== 'string') {
+    throw new Error('Not an MFA challenge token');
+  }
+  return payload as MfaChallengeTokenPayload;
+}
+
 export function generateRefreshTokenValue(): string {
   return crypto.randomBytes(48).toString('hex');
 }

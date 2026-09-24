@@ -1,8 +1,9 @@
 import { Request } from 'express';
-import { and, asc, count, desc, eq, ilike, or, sql, SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ilike, inArray, or, sql, SQL } from 'drizzle-orm';
 import { db } from '@/config/db';
 import { organizations, users, leads, subscriptions } from '@/db/schema';
 import { ApiError } from '@/utils/ApiError';
+import { cache } from '@/config/redis';
 import { recordAudit } from '@/utils/auditLogger';
 import { paginationMeta, toLimitOffset } from '@/utils/pagination';
 import { getPlan, PLANS } from '@/modules/billing/plans';
@@ -57,7 +58,40 @@ export async function listOrganizations(query: {
     db.select({ value: count() }).from(organizations).where(where),
   ]);
 
-  const data = await Promise.all(rows.map(async (org) => ({ ...org, ...(await orgUsageCounts(org.id)) })));
+  // Phase 15 (scale readiness) — this used to call orgUsageCounts() once PER ROW via
+  // Promise.all(rows.map(...)), i.e. 3 extra queries per org (userCount, leadCount, subscription)
+  // on top of the 2 above — 3*pageSize+2 queries for one page of this list (77 for the default
+  // pageSize of 25), where every one of those per-org queries differed only in which
+  // organizationId it filtered on. Below is the exact same three pieces of data, but each fetched
+  // ONCE for the whole page via a GROUP BY / IN — 5 queries total regardless of pageSize — then
+  // joined back onto each row in memory. getOrganizationDetail below still calls orgUsageCounts()
+  // directly: for a single org, the N+1 shape this fixes doesn't apply, and reusing the exact same
+  // "no subscriptions row yet means FREE" logic in one shared helper is worth more there than the
+  // marginal savings of also batching a already-single-org call.
+  const orgIds = rows.map((org) => org.id);
+  const [userCounts, leadCounts, subs] = orgIds.length
+    ? await Promise.all([
+        db.select({ organizationId: users.organizationId, value: count() }).from(users).where(inArray(users.organizationId, orgIds)).groupBy(users.organizationId),
+        db.select({ organizationId: leads.organizationId, value: count() }).from(leads).where(inArray(leads.organizationId, orgIds)).groupBy(leads.organizationId),
+        db.query.subscriptions.findMany({ where: inArray(subscriptions.organizationId, orgIds) }),
+      ])
+    : [[], [], []];
+  const userCountByOrg = new Map(userCounts.map((r) => [r.organizationId, Number(r.value)]));
+  const leadCountByOrg = new Map(leadCounts.map((r) => [r.organizationId, Number(r.value)]));
+  const subByOrg = new Map(subs.map((s) => [s.organizationId, s]));
+
+  const data = rows.map((org) => {
+    const subscription = subByOrg.get(org.id);
+    // Same "no subscriptions row yet means FREE" default as orgUsageCounts below.
+    const plan = getPlan(subscription?.planId ?? 'FREE');
+    return {
+      ...org,
+      userCount: userCountByOrg.get(org.id) ?? 0,
+      leadCount: leadCountByOrg.get(org.id) ?? 0,
+      plan: { id: plan.id, name: plan.name },
+      subscriptionStatus: subscription?.status ?? 'ACTIVE',
+    };
+  });
 
   return { data, meta: paginationMeta(Number(total), query.page, query.pageSize) };
 }
@@ -146,13 +180,34 @@ export async function impersonateUser(req: Request, targetUserId: string) {
     newValues: { platformAdminEmail },
   });
 
-  const { passwordHash, organization, ...safeUser } = user;
+  // Phase 15 (security hardening) — mfaSecretEnc/mfaBackupCodes excluded same as passwordHash;
+  // see auth.service.ts's identical exclusion in issueSession/getCurrentUser for why.
+  const { passwordHash, organization, mfaSecretEnc, mfaBackupCodes, ...safeUser } = user;
   return { accessToken, user: { ...safeUser, permissions, role: user.role.name } };
 }
 
 // Phase 13 (super admin), slice 3 — platform-wide metrics. Aggregates ACROSS every organization,
 // same "deliberate exception" as every other function in this file.
+//
+// Phase 15 (scale readiness) — this is 6 queries including a 12-month raw-SQL trend scan across
+// EVERY organization's rows, run fresh on every single load of a page that's viewed rarely (only
+// platform admins, only occasionally) and never time-critical to the second. Cached the exact same
+// way dashboard.service.ts's own getDashboardSummary caches its (comparably heavy, comparably
+// infrequently-viewed) query — a flat TTL, no explicit invalidation on every mutation that could
+// move these numbers (an org signing up, a lead being created, a subscription changing plan...).
+// dashboard.service.ts already accepts that same tradeoff for anything outside leads/companies/
+// duplicates (e.g. it doesn't invalidate on a new user either) — a platform admin looking at a
+// count that's up to a minute stale is a fair trade for not scattering cache.del calls across
+// organizations.service.ts, users.service.ts, leads.service.ts and billing.service.ts alike. No
+// per-org namespacing needed in the key (contrast dashboard's cacheKey, which IS namespaced by
+// org) — this data isn't scoped to any one tenant in the first place.
+const PLATFORM_METRICS_CACHE_KEY = 'platform-admin:metrics';
+const PLATFORM_METRICS_CACHE_TTL_SECONDS = 60;
+
 export async function getPlatformMetrics() {
+  const cached = await cache.get(PLATFORM_METRICS_CACHE_KEY);
+  if (cached) return cached;
+
   const [[{ value: organizationsTotal }], [{ value: organizationsActive }], [{ value: usersTotal }], [{ value: leadsTotal }], planCounts, signupTrend] =
     await Promise.all([
       db.select({ value: count() }).from(organizations),
@@ -189,7 +244,7 @@ export async function getPlatformMetrics() {
     count: planCountMap.get(plan.id) ?? 0,
   }));
 
-  return {
+  const metrics = {
     totals: {
       organizations: Number(organizationsTotal),
       activeOrganizations: Number(organizationsActive),
@@ -200,4 +255,7 @@ export async function getPlatformMetrics() {
     organizationsByPlan,
     signupTrend: (signupTrend.rows as any[]).map((r) => ({ month: r.month, count: Number(r.count) })),
   };
+
+  await cache.set(PLATFORM_METRICS_CACHE_KEY, metrics, PLATFORM_METRICS_CACHE_TTL_SECONDS);
+  return metrics;
 }

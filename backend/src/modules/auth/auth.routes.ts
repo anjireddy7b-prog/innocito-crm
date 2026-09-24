@@ -3,12 +3,18 @@ import { validate } from '@/middleware/validate';
 import { authenticate } from '@/middleware/auth';
 import { authLimiter } from '@/middleware/rateLimiter';
 import { verifyCsrfToken } from '@/middleware/csrf';
-import { loginSchema, changePasswordSchema } from './auth.validation';
+import { loginSchema, changePasswordSchema, mfaLoginVerifySchema, mfaEnableSchema, mfaDisableSchema } from './auth.validation';
 import * as controller from './auth.controller';
 
 export const authRouter = Router();
 
 authRouter.post('/login', authLimiter, validate(loginSchema), controller.login);
+// Phase 15 (security hardening) — TOTP-based MFA. Same authLimiter budget as /login itself (this
+// is the other half of a brute-forceable login attempt — a code guess, not a password guess), and
+// deliberately NOT behind `authenticate`: the caller doesn't have a real session yet, only the
+// short-lived challenge token from /login's mfaRequired response, which this endpoint itself
+// verifies (see auth.service.ts's verifyMfaChallenge).
+authRouter.post('/mfa/login-verify', authLimiter, validate(mfaLoginVerifySchema), controller.mfaLoginVerify);
 authRouter.post('/refresh', authLimiter, verifyCsrfToken, controller.refresh);
 authRouter.post('/logout', verifyCsrfToken, controller.logout);
 authRouter.get('/me', authenticate, controller.me);
@@ -18,6 +24,12 @@ authRouter.post(
   validate(changePasswordSchema),
   controller.changePassword
 );
+
+// Phase 15 (security hardening) — TOTP-based MFA, self-service management. `authenticate` alone,
+// same "no separate permission — it's your own account" reasoning as /sessions below.
+authRouter.post('/mfa/setup', authenticate, controller.setupMfa);
+authRouter.post('/mfa/enable', authenticate, validate(mfaEnableSchema), controller.enableMfa);
+authRouter.post('/mfa/disable', authenticate, validate(mfaDisableSchema), controller.disableMfa);
 
 // Phase 15 (security hardening) — session/device management. `authenticate` alone, same as /me:
 // every handler is scoped to req.user.sub (see auth.service.ts), so there's no separate

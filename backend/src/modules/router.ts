@@ -37,6 +37,7 @@ import { connectorsRouter } from './connectors/connectors.routes';
 import { billingRouter } from './billing/billing.routes';
 import { platformAdminRouter } from './platformAdmin/platformAdmin.routes';
 import { aiRouter } from './ai/ai.routes';
+import { ipAllowlistRouter } from './ipAllowlist/ipAllowlist.routes';
 
 export const apiRouter = Router();
 
@@ -78,3 +79,4 @@ apiRouter.use('/connectors', connectorsRouter);
 apiRouter.use('/billing', billingRouter);
 apiRouter.use('/platform-admin', platformAdminRouter);
 apiRouter.use('/ai', aiRouter);
+apiRouter.use('/ip-allowlist', ipAllowlistRouter);

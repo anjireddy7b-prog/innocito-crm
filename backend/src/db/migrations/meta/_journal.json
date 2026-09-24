@@ -253,6 +253,20 @@
       "when": 1790235257818,
       "tag": "0035_session_management_lockout",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1790237372603,
+      "tag": "0036_ip_allowlist",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1790238691824,
+      "tag": "0037_mfa_totp",
+      "breakpoints": true
     }
   ]
 }

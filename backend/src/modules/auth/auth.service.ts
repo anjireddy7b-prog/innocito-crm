@@ -10,8 +10,14 @@ import {
   generateRefreshTokenValue,
   hashToken,
   refreshExpiryDate,
+  signMfaChallengeToken,
+  verifyMfaChallengeToken,
 } from '@/utils/tokens';
 import { recordAudit } from '@/utils/auditLogger';
+import { isIpAllowed } from '@/utils/ipAllowlist';
+import { encryptToken, decryptToken } from '@/utils/tokenCrypto';
+import { tokenEncryptionEnabled } from '@/config/env';
+import { generateTotpSecret, totpKeyUri, totpQrCodeDataUrl, verifyTotpCode, generateBackupCodes, matchBackupCode } from '@/utils/mfa';
 
 // Phase 15 (security hardening) — account-level brute-force lockout, layered on top of
 // authLimiter's existing per-IP rate limit (middleware/rateLimiter.ts). See db/schema.ts's
@@ -112,7 +118,46 @@ export async function login(req: Request, email: string, password: string) {
     throw ApiError.unauthorized('This organization has been suspended. Contact support for help.');
   }
 
+  // Phase 15 (security hardening) — same exemption and same "after the password verifies"
+  // ordering as the organization-suspended check just above (a wrong password from a disallowed
+  // network still just gets "Invalid email or password", never a hint that the network itself is
+  // the problem). This is the one-time gate at sign-in; middleware/auth.ts's authenticate is what
+  // keeps enforcing it on every request after, since an access token issued here stays valid from
+  // anywhere until it expires.
+  if (!user.isPlatformAdmin && !(await isIpAllowed(user.organizationId, req.ip))) {
+    await recordAudit({
+      req,
+      action: 'LOGIN_FAILED',
+      entityType: 'User',
+      entityId: user.id,
+      organizationId: user.organizationId,
+      newValues: { reason: 'ip_not_allowed' },
+    });
+    throw ApiError.unauthorized("Your network is not on this organization's allowed list.");
+  }
+
+  // Phase 15 (security hardening) — TOTP-based MFA. Checked after every other gate above
+  // (lockout, organization-suspended, IP allowlist) has already passed, and — same reasoning as
+  // those — the password has already been verified, so there's nothing left for a non-holder of
+  // this account's password to learn from this branch. Rather than issuing the real session
+  // below, this hands back a short-lived challenge token (utils/tokens.ts's
+  // signMfaChallengeToken) that only verifyMfaChallenge can redeem; no refresh_tokens row is
+  // created and no LOGIN audit entry is recorded until that actually happens, so an
+  // authenticated-but-not-yet-MFA'd request has no session to speak of at all, not merely a
+  // client-side flag it could ignore.
+  if (user.mfaEnabled) {
+    return { mfaRequired: true as const, challengeToken: signMfaChallengeToken(user.id) };
+  }
+
   const permissions = user.role.permissions.map((rp) => rp.permission.key);
+  return { mfaRequired: false as const, ...(await issueSession(req, user, permissions)) };
+}
+
+// The exact row shape loadUserWithPermissions/login's own query load (same `with` clause) —
+// reused here rather than re-declared so this can never silently drift out of sync with either.
+type LoginUserRow = NonNullable<Awaited<ReturnType<typeof loadUserWithPermissions>>>['user'];
+
+async function issueSession(req: Request, user: LoginUserRow, permissions: string[]) {
   const accessToken = signAccessToken({
     sub: user.id,
     email: user.email,
@@ -134,7 +179,9 @@ export async function login(req: Request, email: string, password: string) {
   await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id));
   await recordAudit({ req, action: 'LOGIN', entityType: 'User', entityId: user.id, organizationId: user.organizationId });
 
-  const { passwordHash, organization, ...safeUser } = user;
+  // See getCurrentUser's identical exclusion below for why mfaSecretEnc/mfaBackupCodes never
+  // leave the server, same as passwordHash.
+  const { passwordHash, organization, mfaSecretEnc, mfaBackupCodes, ...safeUser } = user;
   return {
     accessToken,
     refreshToken: refreshValue,
@@ -254,7 +301,11 @@ export async function revokeOtherSessions(req: Request, userId: string, currentT
 export async function getCurrentUser(userId: string) {
   const loaded = await loadUserWithPermissions(userId);
   if (!loaded) throw ApiError.notFound('User not found');
-  const { passwordHash, organization, ...safeUser } = loaded.user;
+  // mfaSecretEnc/mfaBackupCodes are excluded same as passwordHash — the frontend only ever needs
+  // the boolean mfaEnabled (still present on safeUser) to decide what to render; the encrypted
+  // secret and backup-code hashes have no legitimate use client-side and this is the one
+  // general-purpose "read my own user row" endpoint every authenticated page calls.
+  const { passwordHash, organization, mfaSecretEnc, mfaBackupCodes, ...safeUser } = loaded.user;
   return { ...safeUser, permissions: loaded.permissions, role: loaded.user.role.name };
 }
 
@@ -269,6 +320,120 @@ export async function changePassword(req: Request, userId: string, currentPasswo
   await db.update(users).set({ passwordHash, mustChangePassword: false }).where(eq(users.id, userId));
   await db.update(refreshTokens).set({ revokedAt: new Date() }).where(eq(refreshTokens.userId, userId));
   await recordAudit({ req, action: 'PASSWORD_RESET', entityType: 'User', entityId: userId });
+}
+
+// Phase 15 (security hardening) — TOTP-based MFA. Self-service only (no ORG-level "require MFA
+// for everyone" policy in this slice — same scope boundary as SessionsCard/changePassword above:
+// every function here acts on the caller's OWN account, gated by nothing but `authenticate`, not
+// a PERMISSIONS key). Full SAML/OIDC SSO (the other half of what was asked for) is deliberately
+// NOT attempted here — unlike this, it needs a real external identity provider to configure and
+// verify against, and should be scoped as its own follow-up once one is chosen.
+
+function requireEncryptionForMfa() {
+  if (!tokenEncryptionEnabled) {
+    // Mirrors connectors.service.ts's requireEncryption — same reasoning: the TOTP secret is a
+    // real credential (anyone holding it can generate valid codes for this account forever), so
+    // it must never be written to mfaSecretEnc unencrypted.
+    throw ApiError.badRequest(
+      'This server has no TOKEN_ENCRYPTION_KEY configured, so an MFA secret cannot be stored safely. Ask an operator to set TOKEN_ENCRYPTION_KEY before enabling MFA.'
+    );
+  }
+}
+
+/** Step 1 of enabling MFA: generates a fresh secret (overwriting any not-yet-confirmed one from a
+ * previous, abandoned setup attempt — see schema.ts's mfaSecretEnc comment), stores it encrypted,
+ * and returns everything the frontend needs to render a scannable QR code plus the raw secret as
+ * a fallback for manual entry. mfaEnabled is untouched (stays false, or stays true if the user is
+ * mid-way through ROTATING an already-enabled secret) until enableMfa below confirms the user can
+ * actually produce a valid code from it. */
+export async function setupMfa(userId: string, email: string) {
+  requireEncryptionForMfa();
+  const secret = generateTotpSecret();
+  await db.update(users).set({ mfaSecretEnc: encryptToken(secret) }).where(eq(users.id, userId));
+  const keyUri = totpKeyUri(email, secret);
+  return { secret, qrCodeDataUrl: await totpQrCodeDataUrl(keyUri) };
+}
+
+/** Step 2: confirms the code the user's authenticator app just produced from the pending secret,
+ * flips mfaEnabled on, and mints a fresh set of backup codes — returned in plaintext exactly this
+ * once (see utils/mfa.ts's generateBackupCodes; only the argon2 hashes are persisted). Generating
+ * new backup codes here even on a re-confirm (e.g. rotating the secret) rather than trying to
+ * "keep" old ones is deliberate: there is no way to show a previously-issued plaintext code again
+ * to prove the old set is still what the user has, so the safe assumption is that any codes issued
+ * before this moment might not be — mirrors why enabling MFA the first time gets a brand new set
+ * rather than an empty one. */
+export async function enableMfa(req: Request, userId: string, code: string) {
+  const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
+  if (!user) throw ApiError.notFound('User not found');
+  if (!user.mfaSecretEnc) {
+    throw ApiError.badRequest('Start MFA setup first to get a secret to confirm.');
+  }
+  const secret = decryptToken(user.mfaSecretEnc);
+  if (!verifyTotpCode(secret, code)) {
+    throw ApiError.badRequest('That code is incorrect or expired. Check your authenticator app and try again.');
+  }
+
+  const { plaintext, hashed } = await generateBackupCodes();
+  await db.update(users).set({ mfaEnabled: true, mfaBackupCodes: hashed }).where(eq(users.id, userId));
+  await recordAudit({ req, action: 'MFA_ENABLED', entityType: 'User', entityId: userId });
+  return { backupCodes: plaintext };
+}
+
+/** Re-verifies the caller's password (same "sensitive action" bar as changePassword itself, since
+ * turning MFA off is a downgrade in account security) before clearing every MFA field — a partial
+ * disable (e.g. mfaEnabled: false but the secret left behind) would let a later bug or bypass
+ * silently resurrect it, so all three columns are cleared together. */
+export async function disableMfa(req: Request, userId: string, password: string) {
+  const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
+  if (!user) throw ApiError.notFound('User not found');
+  const valid = await argon2.verify(user.passwordHash, password);
+  if (!valid) throw ApiError.badRequest('Current password is incorrect');
+
+  await db.update(users).set({ mfaEnabled: false, mfaSecretEnc: null, mfaBackupCodes: null }).where(eq(users.id, userId));
+  await recordAudit({ req, action: 'MFA_DISABLED', entityType: 'User', entityId: userId });
+}
+
+/** Redeems an MFA challenge token (from login()'s mfaRequired branch) plus a code — either a live
+ * TOTP code or one of the user's remaining backup codes — and, on success, completes login exactly
+ * like the non-MFA path does: issues a real session via issueSession, which is where the LOGIN
+ * audit entry and the refresh_tokens row actually get created (not here, and not at the earlier
+ * password step) — a stolen or guessed challenge token with no valid code behind it produces no
+ * session and no trace of a completed login. */
+export async function verifyMfaChallenge(req: Request, challengeToken: string, code: string) {
+  let payload;
+  try {
+    payload = verifyMfaChallengeToken(challengeToken);
+  } catch {
+    throw ApiError.unauthorized('Invalid or expired MFA challenge — please log in again.');
+  }
+
+  const loaded = await loadUserWithPermissions(payload.sub);
+  if (!loaded || !loaded.user.isActive || !loaded.user.mfaEnabled || !loaded.user.mfaSecretEnc) {
+    throw ApiError.unauthorized('Invalid or expired MFA challenge — please log in again.');
+  }
+  const { user, permissions } = loaded;
+
+  // Already checked non-null just above (via loaded.user, the same object) — re-asserted here
+  // since the destructure above loses TS's narrowing on the new `user` binding.
+  const secret = decryptToken(user.mfaSecretEnc!);
+  if (verifyTotpCode(secret, code)) {
+    return await issueSession(req, user, permissions);
+  }
+
+  // Not a valid TOTP code — try it as a backup code before failing outright.
+  const codes = user.mfaBackupCodes ?? [];
+  const matchIndex = await matchBackupCode(codes, code);
+  if (matchIndex === -1) {
+    await recordAudit({ req, action: 'LOGIN_FAILED', entityType: 'User', entityId: user.id, organizationId: user.organizationId, newValues: { reason: 'mfa_code_invalid' } });
+    throw ApiError.unauthorized('Invalid code. Check your authenticator app, or use one of your backup codes.');
+  }
+
+  // Spend the backup code (mark it used, never delete it — see schema.ts's mfaBackupCodes
+  // comment) before issuing the session, so a code can never be reused even if something below
+  // fails partway.
+  const updatedCodes = codes.map((c, i) => (i === matchIndex ? { ...c, usedAt: new Date().toISOString() } : c));
+  await db.update(users).set({ mfaBackupCodes: updatedCodes }).where(eq(users.id, user.id));
+  return await issueSession(req, user, permissions);
 }
 
 // Phase 13 (super admin), slice 2. Called with the CALLER's own req.user, which — because this

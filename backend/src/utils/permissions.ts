@@ -122,6 +122,15 @@ export const PERMISSIONS = {
   // existing data-access permission on top (e.g. LEADS_VIEW for insights) so this alone never
   // grants access to data the caller couldn't already see.
   AI_FEATURES_USE: 'ai:use',
+  // Phase 15 (security hardening): view/add/remove this organization's IP allowlist entries.
+  // ADMIN-only by default — same "infrastructure-adjacent, admin-level decision" tier as
+  // API_KEYS_MANAGE/WEBHOOKS_MANAGE/CONNECTORS_MANAGE above (restricting which networks can even
+  // reach this org's data is squarely that kind of decision). Enforcement of an existing
+  // allowlist (rejecting a request from a disallowed IP) is NOT gated by this permission — like
+  // BILLING_MANAGE's usage-limit enforcement, that's a system-wide check (middleware/auth.ts's
+  // authenticate, and auth.service.ts's login) that runs regardless of who's calling; this
+  // permission only covers looking at and changing the allowlist itself.
+  IP_ALLOWLIST_MANAGE: 'ip_allowlist:manage',
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -251,6 +260,7 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionKey, string> = {
   [PERMISSIONS.CONNECTORS_MANAGE]: 'Register, edit, and delete third-party connector instances (Slack, HubSpot, Zoom, etc.)',
   [PERMISSIONS.BILLING_MANAGE]: "View the organization's plan, usage, and invoices; change plans or open the billing portal",
   [PERMISSIONS.AI_FEATURES_USE]: 'Use AI features — lead insights & scoring, drafting sequence step copy, and the conversational assistant',
+  [PERMISSIONS.IP_ALLOWLIST_MANAGE]: "View, add, and remove the organization's allowed IP/CIDR ranges",
 };
 
 /** Description seeded onto each organization's own copy of the 5 default roles. Editable
